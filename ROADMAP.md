@@ -67,7 +67,7 @@ Port deviations from the PR (intentional):
 - `SubEvolutionContext.GetParam` delegates to the population context (faithful to the PR) — note this drops individual-scoped resolution; revisit in Phase 3 with the parameter system.
 - `IMetaOperatorsStrategy` is our own 2-method interface (`Cross`/`Mutate`) rather than the PR's additions to upstream `IOperatorsStrategy`.
 
-### Phase 2 — Match + remaining primitives [IN PROGRESS — item 1 done]
+### Phase 2 — Match + remaining primitives [IN PROGRESS — items 1, 3, 4 done]
 
 Sources under `Metaheuristics/Match/` and `Metaheuristics/Primitives/` on the PR branch (sizes in bytes as triage hints):
 
@@ -78,8 +78,11 @@ Sources under `Metaheuristics/Match/` and `Metaheuristics/Primitives/` on the PR
    - `MetaHeuristicParameter<T>` + `IMetaHeuristicParameterGenerator<T>` ported early (Phase 3 material) because `MatchPicker`'s per-scope caching requires them. The expression-tree variants remain Phase 3.
    - `MetaHeuristicsExtensions` seeded with the three Match verbs (`WithSubMetaHeuristic`, `WithCrossoverMetaHeuristic`, `WithMatches`); the full grammar remains Phase 3.
 2. **Sub-population machinery**: `SubPopulationContext` (1937, context), `SubPopulationMetaHeuristicBase` (2591), `EukaryoteMetaHeuristic` (6467 — chromosome partitioning; check its dependence on PR `Population` virtuals, adapt to `MetaPopulation`).
-3. **Control-flow primitives**: `SwitchMetaHeuristic` (4206), `SizeBasedMetaHeuristic` (4269), `GenerationMetaHeuristic` (1332), `PopulationMetaHeuristic` (1037), `PhaseMetaHeuristicBase` (1218), `StagePhaseMetaHeuristic` (606), `EmptyMetaHeuristic` (1282).
-4. **Operator wrappers**: `OperatorMetaHeuristic` (801), `CrossoverMetaHeuristic` (718), `MutationMetaHeuristic` (685), `SelectionMetaHeuristic` (628), `ReinsertionMetaHeuristic` (706).
+3. **Control-flow primitives** [DONE]: `PhaseMetaHeuristicBase<TIndex>`, `SwitchMetaHeuristic<TIndex>` (+ `IfElseMetaHeuristic`), `SizeBasedMetaHeuristic` (with nested `EnumeratedPhases`), `GenerationMetaHeuristic`, `PopulationMetaHeuristic`, `StageSwitchMetaHeuristic` (PR name: `StagePhaseMetaHeuristic`), `EmptyMetaHeuristic`. Port deviations (intentional):
+   - **Two latent PR caching bugs fixed**: the PR gives `PopulationMetaHeuristic` and `StageSwitchMetaHeuristic` a `ParamScope.Generation` cache scope, but the masking semantics zero the individual (resp. widen the stage) out of the cache key — so the first computed value per generation would pin all individuals to one phase (resp. freeze the stage switch). Both now use `ParamScope.None` (the generators are trivial context reads; caching buys nothing). Documented in code comments.
+   - `GenerationMetaHeuristic`/`PopulationMetaHeuristic`/`StageSwitchMetaHeuristic` use plain `MetaHeuristicParameter<T>` generators where the PR uses `ExpressionMetaHeuristicParameter` (same runtime semantics; expression-tree fusion is Phase 3).
+   - `PositiveMod` does not exist in upstream 3.1.4 `Infrastructure.Framework` — inlined as a private helper in `EnumeratedPhases`.
+4. **Operator wrappers** [DONE]: `OperatorMetaHeuristic<TOperator>` (with `ParamScope.Constant` promotion of the generated operator to `StaticOperator`), `CrossoverMetaHeuristic`, `MutationMetaHeuristic`, `SelectionMetaHeuristic`, `ReinsertionMetaHeuristic`. Deviation: `CrossoverMetaHeuristic`'s `DisplayName` fixed to "Crossover" (the PR mislabels it "Container", copy-paste slip).
 5. **Islands**: `IslandMetaHeuristic` (18844 — biggest primitive; needs sub-GA runs, check `Reset`/`Step` usage).
 
 Acceptance: unit tests per primitive + one composed scenario (e.g. eukaryote over a 2-part chromosome).
