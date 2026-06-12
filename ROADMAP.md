@@ -67,11 +67,16 @@ Port deviations from the PR (intentional):
 - `SubEvolutionContext.GetParam` delegates to the population context (faithful to the PR) — note this drops individual-scoped resolution; revisit in Phase 3 with the parameter system.
 - `IMetaOperatorsStrategy` is our own 2-method interface (`Cross`/`Mutate`) rather than the PR's additions to upstream `IOperatorsStrategy`.
 
-### Phase 2 — Match + remaining primitives [TODO]
+### Phase 2 — Match + remaining primitives [IN PROGRESS — item 1 done]
 
 Sources under `Metaheuristics/Match/` and `Metaheuristics/Primitives/` on the PR branch (sizes in bytes as triage hints):
 
-1. **Match machinery**: `MatchingKind` (266), `MatchingSettings` (1276), `MatchPicker` (13585), `MatchMetaHeuristic` (4544). Then restore `DefaultMetaHeuristic`'s Match path.
+1. **Match machinery** [DONE]: `MatchingKind`, `MatchingSettings`, `MatchPicker`, `MatchMetaHeuristic` ported; `DefaultMetaHeuristic`'s lazy Match path restored. Port deviations (intentional):
+   - `MatchMetaHeuristic.CrossMetaHeuristic` falls back to `SubMetaHeuristic` when null (the PR NREs on a bare instance).
+   - `MatchingKind.Best` single-pick reads `ctx.Population.BestChromosome` instead of `CurrentGeneration.BestChromosome` (our engine never calls `Generation.End()`, see caveats above), with random fallback while null.
+   - The PR's `Generation.GetBestChromosomes`/`GetWorstChromosomes` trunk additions are absorbed as `GenerationExtensions` extension methods (plain `OrderBy` for now; the PR's `LazyOrderBy` partial sort is a Phase 5 benchmark-driven optimization).
+   - `MetaHeuristicParameter<T>` + `IMetaHeuristicParameterGenerator<T>` ported early (Phase 3 material) because `MatchPicker`'s per-scope caching requires them. The expression-tree variants remain Phase 3.
+   - `MetaHeuristicsExtensions` seeded with the three Match verbs (`WithSubMetaHeuristic`, `WithCrossoverMetaHeuristic`, `WithMatches`); the full grammar remains Phase 3.
 2. **Sub-population machinery**: `SubPopulationContext` (1937, context), `SubPopulationMetaHeuristicBase` (2591), `EukaryoteMetaHeuristic` (6467 — chromosome partitioning; check its dependence on PR `Population` virtuals, adapt to `MetaPopulation`).
 3. **Control-flow primitives**: `SwitchMetaHeuristic` (4206), `SizeBasedMetaHeuristic` (4269), `GenerationMetaHeuristic` (1332), `PopulationMetaHeuristic` (1037), `PhaseMetaHeuristicBase` (1218), `StagePhaseMetaHeuristic` (606), `EmptyMetaHeuristic` (1282).
 4. **Operator wrappers**: `OperatorMetaHeuristic` (801), `CrossoverMetaHeuristic` (718), `MutationMetaHeuristic` (685), `SelectionMetaHeuristic` (628), `ReinsertionMetaHeuristic` (706).

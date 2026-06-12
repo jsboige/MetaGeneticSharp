@@ -13,9 +13,32 @@ namespace MetaGeneticSharp
     [DisplayName("Default")]
     public class DefaultMetaHeuristic : ScopedMetaHeuristic
     {
+        private MatchMetaHeuristic _matchMetaHeuristic;
+
         public DefaultMetaHeuristic()
             : base(new NoOpMetaHeuristic())
         {
+        }
+
+        /// <summary>
+        /// The default metaheuristic recycles the original operators-strategy routine
+        /// (adjacent matching); touching this property at configuration time switches
+        /// the crossover stage to a dedicated <see cref="MetaGeneticSharp.MatchMetaHeuristic"/>
+        /// (current + random matches by default), offering the full matching flexibility.
+        /// </summary>
+        public MatchMetaHeuristic MatchMetaHeuristic
+        {
+            get
+            {
+                if (_matchMetaHeuristic == null)
+                {
+                    lock (this)
+                    {
+                        _matchMetaHeuristic ??= new MatchMetaHeuristic().WithMatches(MatchingKind.Current, MatchingKind.Random);
+                    }
+                }
+                return _matchMetaHeuristic;
+            }
         }
 
         protected override IList<IChromosome> ScopedSelectParentPopulation(IEvolutionContext ctx, ISelection selection)
@@ -25,8 +48,14 @@ namespace MetaGeneticSharp
 
         protected override IList<IChromosome> ScopedMatchParentsAndCross(IEvolutionContext ctx, ICrossover crossover, float crossoverProbability, IList<IChromosome> parents)
         {
-            // Adjacent matching only; the configurable MatchingTechnique system
-            // (randomized/best/child-generation pairings) is ported in Phase 2.
+            if (_matchMetaHeuristic != null)
+            {
+                return _matchMetaHeuristic.MatchParentsAndCross(ctx, crossover, crossoverProbability, parents);
+            }
+
+            // If match the probability cross is made, otherwise no offspring is produced
+            // for this index. Checks that enough parents remain at the end of the list
+            // for what the crossover expects.
             if (parents.Count - ctx.LocalIndex >= crossover.ParentsNumber
                 && RandomizationProvider.Current.GetDouble() <= crossoverProbability)
             {
