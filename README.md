@@ -1,37 +1,42 @@
 # MetaGeneticSharp
 
-Component-based metaheuristics framework built on [GeneticSharp](https://github.com/giacomelli/GeneticSharp) — **primitives over bestiary** (cf. Sorensen 2015, "Metaheuristics — the metaphor exposed").
+Composable metaheuristics for .NET, built on [GeneticSharp](https://github.com/giacomelli/GeneticSharp).
+
+## Why
+
+Python's [mealpy](https://github.com/thieu1995/mealpy) shows how far a metaheuristics library can go when a large catalog of algorithms shares a common trunk: genes are vectors, operators are vector operations, and everything stays compact, fast, and uniformly benchmarkable. GeneticSharp starts from the opposite end: chromosomes, fitness functions and operators are plain .NET interfaces that presume nothing about the underlying representation — bit strings, permutations, trees and floating-point vectors alike.
+
+MetaGeneticSharp aims at both at once: mealpy-grade expressiveness — an algorithm stated in a few declarative lines — over GeneticSharp's representation-agnostic components, without giving up performance. Its core abstraction is the **metaheuristic**, a composable unit that can intercept each stage of the evolution loop (selection, crossover, mutation, reinsertion), together with a **fluent grammar** to assemble them. Published algorithms (Whale Optimization, Equilibrium Optimizer, island models, ...) are reconstructed from reusable primitives rather than shipped as opaque monoliths — components over metaphors.
 
 ## Origin
 
-This project continues the work from [PR #87](https://github.com/giacomelli/GeneticSharp/pull/87) (MyIntelligenceAgency/GeneticSharp, 2020-2022), which was closed by @giacomelli with the suggestion to create a child project:
+The metaheuristics layer was first developed in [GeneticSharp PR #87](https://github.com/giacomelli/GeneticSharp/pull/87) (2020-2022). The PR grew too large for the upstream trunk and was closed with the suggestion that it become a *"child project of GeneticSharp"*. MetaGeneticSharp is that child project: it consumes GeneticSharp as a vanilla, unpatched submodule (pinned at v3.1.4) and ports the PR's metaheuristics layer on top of it.
 
-> *"Maybe this PR could be a 'child' project of GeneticSharp, like 'GeneticSharp-Contributions' or something like that."*
+## Architecture
 
-MetaGeneticSharp implements that vision: a separate library consuming GeneticSharp as a submodule, adding metaheuristic primitives, compound heuristics, and a fluent API for composing optimization strategies.
+Metaheuristics address individuals by **stable index** across evolution stages, while the stock `GeneticAlgorithm`/`Population` sort generations by fitness as a side effect — the trunk changes this forced were a large part of what doomed PR #87. Rather than patching upstream, MetaGeneticSharp ships its own engine over the unmodified library:
 
-## Philosophy
+| Component | Role |
+|-----------|------|
+| `MetaGeneticAlgorithm` | Autonomous evolution engine (`IGeneticAlgorithm`): metaheuristic-driven loop, offspring-scoped fitness evaluation, no implicit fitness sort |
+| `MetaPopulation` | Order-preserving population (`IMetaPopulation : IPopulation`) with a parameter store for evolution-context caching |
+| `IMetaHeuristic` + primitives | Composable units (`Container`, `Scoped`, `NoOp`, `Default`, ...) intercepting each evolution stage |
+| `IEvolutionContext` | Per-population / per-individual context: stable indices, stage products, scoped parameters |
+| Fluent grammar | Declarative composition of primitives into complete algorithms (see [ROADMAP.md](ROADMAP.md)) |
 
-Following the critique by @ktnr (operations research, 2020-11-20) and the [EC-Bestiary](https://github.com/fcampelo/EC-Bestiary):
-
-- **Primitives, not metaphors**: `EukaryoteMetaHeuristic`, `IslandMetaHeuristic`, `SizeBasedMetaHeuristic`, `SwitchMetaHeuristic` — composable building blocks
-- **Compound heuristics from primitives**: Whale Optimization Algorithm, Equilibrium Optimizer reconstructed from primitives (deconstruction pedagogique)
-- **Fluent API with Lambda Expression visitors**: Performance-optimized parameter binding via expression tree fusion
+GeneticSharp's operator catalog (selections, crossovers, mutations, terminations, randomization) is consumed as-is through its public interfaces.
 
 ## Structure
 
 ```
 MetaGeneticSharp/
   src/
-    MetaGeneticSharp.Domain/          # Core metaheuristic engine
-    MetaGeneticSharp.Extensions/      # TSP, Sudoku, Benchmark functions
-    MetaGeneticSharp.Infrastructure/  # Utility framework (from PR #87)
+    MetaGeneticSharp.Domain/          # Core metaheuristic engine + primitives
+    MetaGeneticSharp.Extensions/      # TSP, Sudoku, benchmark functions
+    MetaGeneticSharp.Infrastructure/  # Utility framework
   tests/
-    MetaGeneticSharp.Domain.Tests/
-    MetaGeneticSharp.Extensions.Tests/
-    MetaGeneticSharp.Infrastructure.Tests/
   notebooks/                          # .NET Interactive pedagogical notebooks
-  GeneticSharp/                       # Upstream submodule
+  GeneticSharp/                       # Upstream submodule (vanilla, v3.1.4)
 ```
 
 ## Building
@@ -45,8 +50,8 @@ dotnet test
 
 ## References
 
-- Sorensen, K. (2015). "Metaheuristics — the metaphor exposed." *International Transactions in Operational Research*, 22(1), 3-18. [DOI](https://doi.org/10.1111/itor.12001)
-- Ruiz, R., Stutzle, T. (2007). "A simple and effective iterated greedy algorithm for the permutation flowshop scheduling problem." *European Journal of Operational Research*, 177(3), 2033-2049. [DOI](https://doi.org/10.1016/j.ejor.2005.12.009)
+- Van Thieu, N., Mirjalili, S. (2023). "MEALPY: An open-source library for latest meta-heuristic algorithms in Python." *Journal of Systems Architecture*, 139. [GitHub](https://github.com/thieu1995/mealpy)
+- Sörensen, K. (2015). "Metaheuristics — the metaphor exposed." *International Transactions in Operational Research*, 22(1). [DOI](https://doi.org/10.1111/itor.12001)
 - Moraglio, A. (2007). "Towards a Geometric Unification of Evolutionary Algorithms." PhD thesis, University of Essex.
 - Campelo, F., Aranha, C. "EC-Bestiary." [GitHub](https://github.com/fcampelo/EC-Bestiary)
 
@@ -58,4 +63,4 @@ MIT (consistent with GeneticSharp upstream)
 
 - Upstream: [giacomelli/GeneticSharp](https://github.com/giacomelli/GeneticSharp)
 - Original PR: [giacomelli/GeneticSharp#87](https://github.com/giacomelli/GeneticSharp/pull/87)
-- Consumed by: [CoursIA Search Part4](https://github.com/jsboige/CoursIA) (submodule)
+- Consumed by: [CoursIA](https://github.com/jsboige/CoursIA)
