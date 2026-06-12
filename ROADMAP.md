@@ -93,11 +93,16 @@ Acceptance: each compound converges on standard benchmark functions; results com
 
 ### Phase 5 — Extensions + benchmarks [TODO]
 
-`MetaGeneticSharp.Extensions`: TSP, Sudoku, benchmark functions from the PR's Extensions project. A mealpy-style evaluation harness (same functions, same budgets) to ground the "consolidation without performance loss" claim.
+`MetaGeneticSharp.Extensions`: TSP, Sudoku, benchmark functions from the PR's Extensions project (`Mathematic/Functions/`: `IKnownFunction`, `KnownFunction`, `KnownFunctions` — Ackley, Rastrigin, Eggholder, Levy, ...). A mealpy-style evaluation harness (same functions, same budgets) to ground the "consolidation without performance loss" claim.
+
+**Center-bias protocol (required, project-owner mandate 2026-06-12).** Many published metaheuristics (WOA among them) exploit benchmark optima sitting at the center/zero of the search domain — shifting the functions exposes the bias (Kudela, *A critical problem in benchmarking and analysis of evolutionary computation methods*, Nature Machine Intelligence 4, 2022). The PR already has an embryo: `KnownFunctionExtensions.Shift` (uniform scalar shift on every coordinate). Generalize it when porting:
+- per-dimension shift **vectors** (seeded-random offsets, not one scalar for all dims), keeping the un-shifted variant available for comparison;
+- benchmark harness runs every function in both centered and shifted form by default, reporting the delta (a large centered-vs-shifted gap is the bias signature);
+- optional rotation can come later; shift is the cheap high-signal first step.
 
 ### Phase 6 — Landscape Explorer revival [TODO]
 
-The era's companion visualization/exploration tool (to be revived per the project owner). Scope to be defined when Phases 1-4 are stable — likely a separate repo or `tools/` folder consuming this library.
+The era's companion visualization/exploration tool: in the PR it lives in `GeneticSharp.Runner.GtkApp/Samples/LandscapeExplorerSampleController.cs` (landscape replot over `KnownFunctions`, heatmap rendering of fitness landscapes + population trajectories). Revive on a modern host (likely a notebook-friendly plotting backend or a small app in `tools/`, consuming this library) rather than porting the GTK shell. First-class use case: **visualizing the center-bias of compound metaheuristics** (Phase 5 shifted functions x Phase 4 WOA/EO/FBI — the heatmap makes the bias visible, not just measurable).
 
 ### Continuous — upstream nuggets
 
