@@ -67,7 +67,7 @@ Port deviations from the PR (intentional):
 - `SubEvolutionContext.GetParam` delegates to the population context (faithful to the PR) — note this drops individual-scoped resolution; revisit in Phase 3 with the parameter system.
 - `IMetaOperatorsStrategy` is our own 2-method interface (`Cross`/`Mutate`) rather than the PR's additions to upstream `IOperatorsStrategy`.
 
-### Phase 2 — Match + remaining primitives [IN PROGRESS — items 1-4 done]
+### Phase 2 — Match + remaining primitives [DONE]
 
 Sources under `Metaheuristics/Match/` and `Metaheuristics/Primitives/` on the PR branch (sizes in bytes as triage hints):
 
@@ -88,7 +88,12 @@ Sources under `Metaheuristics/Match/` and `Metaheuristics/Primitives/` on the PR
    - `GenerationMetaHeuristic`/`PopulationMetaHeuristic`/`StageSwitchMetaHeuristic` use plain `MetaHeuristicParameter<T>` generators where the PR uses `ExpressionMetaHeuristicParameter` (same runtime semantics; expression-tree fusion is Phase 3).
    - `PositiveMod` does not exist in upstream 3.1.4 `Infrastructure.Framework` — inlined as a private helper in `EnumeratedPhases`.
 4. **Operator wrappers** [DONE]: `OperatorMetaHeuristic<TOperator>` (with `ParamScope.Constant` promotion of the generated operator to `StaticOperator`), `CrossoverMetaHeuristic`, `MutationMetaHeuristic`, `SelectionMetaHeuristic`, `ReinsertionMetaHeuristic`. Deviation: `CrossoverMetaHeuristic`'s `DisplayName` fixed to "Crossover" (the PR mislabels it "Container", copy-paste slip).
-5. **Islands**: `IslandMetaHeuristic` (18844 — biggest primitive; needs sub-GA runs, check `Reset`/`Step` usage).
+5. **Islands** [DONE]: `IslandPopulation` (`SubPopulation` + per-island `MigrationRates`), `IslandMetaHeuristic` with `MigrationMode` (None/Static/RandomRing/RandomPermutation/Reinforced), periodic migration in the selection stage (`GenerationsNumber % MigrationsGenerationPeriod`), emigrants picked Best/copied (not removed) and worst targets replaced via `MatchPicker`s. The ROADMAP's earlier "needs sub-GA runs, check `Reset`/`Step`" concern turned out moot: the primitive never runs sub-GAs — islands are `SubPopulation` slices of **full individuals** evolved by the per-island phase heuristics within the parent engine's stages. Port deviations (intentional):
+   - `(ctx.GeneticAlgorithm as MetaGeneticAlgorithm)?.Crossover` replaces the PR's hard cast to its patched `GeneticAlgorithm` (the crossover only feeds Child/Custom match picks; Best/Worst ignore it).
+   - The hardcoded `crossoverProbability = 1` passed to sub-heuristic cross calls is kept and documented as **load-bearing**: mutation/reinsertion re-slice the global offspring list by fixed island sizes, only exact when every pair produces offspring (`DefaultMetaHeuristic` rolls the dice itself otherwise).
+   - `InitMigrationRates`' off-diagonal `GlobalMigrationRate / Count` (arguably `/(Count-1)`) kept faithful — Static mode only, ctor-time snapshot.
+   - `SynchroniseGeneration` is dead code under the default `Generation | MetaHeuristic` caching scope (islands are regenerated fresh each generation); kept faithful for user-broadened scopes.
+   - PR's commented-out debug blocks dropped; `sourceReinserts` renamed `sourceChromosomes`. `PerformSubOperator` from the generic base is unused by Island (concatenation, not karyotype recombination) — as in the PR.
 
 Acceptance: unit tests per primitive + one composed scenario (e.g. eukaryote over a 2-part chromosome).
 
