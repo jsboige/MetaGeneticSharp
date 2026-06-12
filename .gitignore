@@ -1,0 +1,32 @@
+## Build outputs
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.nupkg
+packages/
+.vs/
+.vscode/
+.idea/
+
+## Test results
+TestResults/
+*.trx
+coverage/
+
+## OS files
+Thumbs.db
+.DS_Store
+
+## .NET
+*.swp
+*._*
+.nuget/
+nuget.exe
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## notebooks outputs
+.ipynb_checkpoints/
