@@ -97,11 +97,17 @@ Sources under `Metaheuristics/Match/` and `Metaheuristics/Primitives/` on the PR
 
 Acceptance: unit tests per primitive + one composed scenario (e.g. eukaryote over a 2-part chromosome).
 
-### Phase 3 — Parameters + fluent grammar [TODO]
+### Phase 3 — Parameters + fluent grammar [IN PROGRESS]
 
 The project's keystone (see README). Sources: `Parameters/` (`ExpressionMetaHeuristicParameter` 4793, `MetaHeuristicParameter` 3705, `ParameterReplacer` 2347 — expression-tree fusion, perf-sensitive), `MetaHeuristicsExtensions.cs` (19903 — the fluent grammar itself), `MetaHeuristicsService` (12036). Depends on the PR's `Infrastructure.Framework` lambda visitors — port what's needed into `MetaGeneticSharp.Infrastructure`.
 
-Acceptance: a compound heuristic expressed fluently, benchmarked against its hand-wired equivalent (no measurable overhead).
+Split into atomically-shippable slices:
+
+1. **Parameter system foundation** [DONE — this delivery]: `ExpressionMetaHeuristicParameter<T>` (+ 3 multi-arg variants + `WithArgs` base), `IExpressionGeneratorParameter`, `ParameterReplacer` (reduces a lambda referencing named dependencies into a closed expression tree), and the sole Infrastructure.Framework dependency `LambdaExpressionHelper` (`ReplaceParameter`/`UnifyParametersByName` expression visitors) ported into `MetaGeneticSharp.Infrastructure` (first real source file in that project, flat namespace `MetaGeneticSharp`). `ParameterGenerator<>` delegates and the `MetaHeuristicParameter<T>` runtime core were already ported in Phase 2. Acceptance: 4 keystone tests — a parameter referencing a named dependency fuses to a closed tree and matches the hand-wired equivalent; scoped caching verified. Build 0/0, 37/37 tests.
+2. **Fluent grammar** [TODO]: `MetaHeuristicsExtensions.cs` (the `.With...()` verbs that compose heuristics and wire parameters) — currently a 3-verb seed from Phase 2. This is the largest single source; may itself split by verb family.
+3. **Service / discovery** [TODO]: `MetaHeuristicsService` (12036) — registration and discovery of named heuristics/parameters.
+
+Acceptance (whole Phase): a compound heuristic expressed fluently, benchmarked against its hand-wired equivalent (no measurable overhead).
 
 ### Phase 4 — Compound metaheuristics [TODO]
 
