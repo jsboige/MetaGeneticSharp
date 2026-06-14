@@ -398,5 +398,40 @@ namespace MetaGeneticSharp
             }
             return metaHeuristic;
         }
+
+        // ---- Geometric crossover verbs (Phase 4) ----
+        // These wire the geometric crossover infrastructure (ported in Phase 4 slice 1)
+        // into the fluent grammar, closing the Geometric verbs deferred from Phase 3 slice 3b.
+
+        /// <summary>
+        /// Sets the gene-wise (linear) geometric operator on a <see cref="GeometricCrossover{TValue}"/>,
+        /// computing each child gene value from the same-index parent gene values.
+        /// </summary>
+        public static GeometricCrossover<TValue> WithLinearGeometricOperator<TValue>(this GeometricCrossover<TValue> geometricCrossover, Func<int, IList<TValue>, TValue> geometricOperator)
+        {
+            geometricCrossover.LinearGeometricOperator = geometricOperator;
+            return geometricCrossover;
+        }
+
+        /// <summary>
+        /// Sets the general (multidimensional) geometric operator on a <see cref="GeometricCrossover{TValue}"/>,
+        /// computing all child gene values at once from the full set of parent gene vectors.
+        /// When set, it takes precedence over the linear operator.
+        /// </summary>
+        public static GeometricCrossover<TValue> WithGeneralGeometricOperator<TValue>(this GeometricCrossover<TValue> geometricCrossover, Func<IList<IList<TValue>>, IList<TValue>> geometricOperator)
+        {
+            geometricCrossover.GeneralGeometricOperator = geometricOperator;
+            return geometricCrossover;
+        }
+
+        /// <summary>
+        /// Sets the geometry embedding on a <see cref="GeometricCrossover{TValue}"/>, transforming
+        /// between chromosome values and metric space before and after the geometric operator is computed.
+        /// </summary>
+        public static T WithGeometryEmbedding<T, TValue>(this T geometricCrossover, IGeometryEmbedding<TValue> geometryEmbedding) where T : GeometricCrossover<TValue>
+        {
+            geometricCrossover.GeometryEmbedding = geometryEmbedding;
+            return geometricCrossover;
+        }
     }
 }
