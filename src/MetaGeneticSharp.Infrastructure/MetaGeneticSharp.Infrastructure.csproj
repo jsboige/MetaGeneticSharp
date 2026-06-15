@@ -14,6 +14,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Copy NuGet deps (System.Drawing.Common) next to the DLL so a `#r` consumer
+         (the MGS-7 notebook under .NET Interactive) resolves them from the same dir. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
 </Project>
