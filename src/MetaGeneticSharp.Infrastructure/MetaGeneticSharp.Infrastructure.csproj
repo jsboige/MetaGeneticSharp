@@ -4,6 +4,12 @@
     <ProjectReference Include="..\..\GeneticSharp\src\GeneticSharp.Infrastructure.Framework\GeneticSharp.Infrastructure.Framework.csproj" />
   </ItemGroup>
 
+  <!-- DirectBitmap / ImageExtensions (recovered verbatim from GeneticSharp Metaheuristics
+       branch @ d05826fd) use System.Drawing. Windows-only at runtime on .NET 9 (po-2024 is Windows). -->
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -3,6 +3,30 @@
   <ItemGroup>
     <ProjectReference Include="..\..\GeneticSharp\src\GeneticSharp.Extensions\GeneticSharp.Extensions.csproj" />
     <ProjectReference Include="..\MetaGeneticSharp.Domain\MetaGeneticSharp.Domain.csproj" />
+    <!-- ImageHeightMapFunction (Landscape) builds a DirectBitmap grayscale -> needs Infrastructure. -->
+    <ProjectReference Include="..\MetaGeneticSharp.Infrastructure\MetaGeneticSharp.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- The 4 original height maps authored by jsboige for the GeneticSharp Metaheuristics
+       LandscapeExplorer sample, recovered verbatim (byte-exact) from @ d05826fd. Embedded so
+       LandscapeMaps.Load(KnownHeightMap) can stream them without an external file dependency. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\EverestMount-HeightMap.png">
+      <LogicalName>MetaGeneticSharp.LandscapeMaps.EverestMount.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\NepalBhoutan-HeightMap.png">
+      <LogicalName>MetaGeneticSharp.LandscapeMaps.NepalBhoutan.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\TibetanPlateau-HeightMap.png">
+      <LogicalName>MetaGeneticSharp.LandscapeMaps.TibetanPlateau.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Resources\World-HeightMap.png">
+      <LogicalName>MetaGeneticSharp.LandscapeMaps.World.png</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <PropertyGroup>
