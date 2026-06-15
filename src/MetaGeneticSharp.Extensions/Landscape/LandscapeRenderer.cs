@@ -37,6 +37,28 @@ public enum KnownHeightMap
 }
 
 /// <summary>
+/// Per-channel quantization used when an RGB color is built from a normalized [0, 1] component
+/// (see <see cref="LandscapeRenderer.GetColorFromHSV"/>). The verbatim controller @ d05826fd
+/// truncates (<c>(int)(r * 255)</c>); <see cref="Round"/> is an additive, opt-in alternative.
+/// </summary>
+public enum ColorQuantization
+{
+    /// <summary>
+    /// Verbatim controller behavior (@ d05826fd): cast <c>r * 255</c> to <see cref="int"/>, which
+    /// truncates toward zero. This is the default so the rendered ramp stays byte-identical to
+    /// jsboige's original output.
+    /// </summary>
+    Truncate,
+
+    /// <summary>
+    /// Round <c>r * 255</c> to the nearest byte (away-from-zero on the .5 tie). Removes the
+    /// systematic downward bias of truncation (a normalized channel of e.g. 0.999 maps to 255
+    /// instead of 254). An opt-in deviation from the verbatim ramp — never the default.
+    /// </summary>
+    Round,
+}
+
+/// <summary>
 /// Thin pedagogical wrapper around the recovered-verbatim landscape library
 /// (<see cref="ImageHeightMapFunction"/>, <see cref="DirectBitmap"/>,
 /// <see cref="ImageExtensions"/>). It loads the four original height maps from embedded
@@ -356,23 +378,45 @@ public static class LandscapeRenderer
     /// var hue = ratio;
     /// return GetColorFromHSV(hue);
     /// </code>
+    /// <paramref name="quantization"/> defaults to <see cref="ColorQuantization.Truncate"/> so the
+    /// ramp stays byte-identical to jsboige's original; pass <see cref="ColorQuantization.Round"/>
+    /// to opt into the de-biased rounding (see <see cref="GetColorFromHSV"/>).
     /// </summary>
-    public static Color GetColor(double fValue, double fMin, double fMax)
+    public static Color GetColor(double fValue, double fMin, double fMax,
+        ColorQuantization quantization = ColorQuantization.Truncate)
     {
         double ratio = (fMax - fMin) <= double.Epsilon
             ? 0.5
             : 0.5 - ((fValue - fMin) / (2 * (fMax - fMin)));
-        return GetColorFromHSV(ratio);
+        return GetColorFromHSV(ratio, quantization: quantization);
     }
 
     /// <summary>
-    /// Verbatim from the controller (@ d05826fd): builds an RGB color from a hue using the
-    /// recovered <see cref="ImageExtensions.HsvToRgb"/> helper.
+    /// Builds an RGB color from a hue using the recovered <see cref="ImageExtensions.HsvToRgb"/>
+    /// helper. With the default <see cref="ColorQuantization.Truncate"/> this is <b>verbatim</b>
+    /// from the controller (@ d05826fd): <c>Color.FromArgb((int)(r * 255), ...)</c>, a truncating
+    /// cast. <see cref="ColorQuantization.Round"/> is an additive opt-in (L2 co-evolution) that
+    /// rounds to the nearest byte instead, removing truncation's systematic downward bias; it is
+    /// <b>never</b> the default, so it never silently alters jsboige's original ramp.
     /// </summary>
-    public static Color GetColorFromHSV(double hue, double saturation = 1.0, double value = 1.0)
+    public static Color GetColorFromHSV(double hue, double saturation = 1.0, double value = 1.0,
+        ColorQuantization quantization = ColorQuantization.Truncate)
     {
         (double r, double g, double b) = (hue, saturation, value).HsvToRgb();
-        return Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
+        return quantization == ColorQuantization.Round
+            ? Color.FromArgb(ToByteRounded(r), ToByteRounded(g), ToByteRounded(b))
+            : Color.FromArgb((int)(r * 255), (int)(g * 255), (int)(b * 255));
+    }
+
+    /// <summary>
+    /// Rounds a normalized [0, 1] channel to the nearest byte (away-from-zero on .5), clamped to
+    /// [0, 255] so a boundary <see cref="ImageExtensions.HsvToRgb"/> result can never overflow
+    /// <see cref="Color.FromArgb(int, int, int)"/>. Used only by <see cref="ColorQuantization.Round"/>.
+    /// </summary>
+    private static int ToByteRounded(double channel)
+    {
+        int scaled = (int)Math.Round(channel * 255, MidpointRounding.AwayFromZero);
+        return Math.Clamp(scaled, 0, 255);
     }
 
     /// <summary>
