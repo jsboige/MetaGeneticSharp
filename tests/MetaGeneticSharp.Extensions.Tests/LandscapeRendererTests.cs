@@ -67,6 +67,50 @@ public class LandscapeRendererTests
     }
 
     // =========================================================================
+    // M2: CreateFunction(KnownHeightMap) disposes the loaded source Image after the
+    // TargetImage setter has grayscale-copied it (no GDI+ handle leak). These guard that
+    // the disposal leaves a fully self-contained grayscale copy: if the source were still
+    // a live dependency of the returned function, evaluating it (or re-rendering) after the
+    // internal dispose would throw ObjectDisposedException.
+    // =========================================================================
+    [TestCase(KnownHeightMap.EverestMount)]
+    [TestCase(KnownHeightMap.NepalBhoutan)]
+    [TestCase(KnownHeightMap.TibetanPlateau)]
+    [TestCase(KnownHeightMap.World)]
+    public void CreateFunction_AfterSourceDisposal_RetainedGrayscaleCopyStillEvaluates(KnownHeightMap map)
+    {
+        // The loaded source Image is disposed inside CreateFunction (M2); the returned function
+        // must evaluate entirely from its own retained grayscale DirectBitmap.
+        using ImageHeightMapFunction function = LandscapeMaps.CreateFunction(map);
+        System.Collections.Generic.IList<(double min, double max)> ranges = function.Ranges(2);
+
+        Assert.DoesNotThrow(() =>
+        {
+            foreach (double fx in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
+            {
+                foreach (double fy in new[] { 0.0, 0.5, 1.0 })
+                {
+                    double value = function.Function(new[] { ranges[0].max * fx, ranges[1].max * fy });
+                    Assert.That(value, Is.InRange(0.0, 255.0), $"({fx}, {fy}) sample out of byte range");
+                }
+            }
+        });
+    }
+
+    [Test]
+    public void CreateFunction_AfterSourceDisposal_RendersHeatmapPng()
+    {
+        // End-to-end guard: build (source disposed inside), then render a graphic heatmap from
+        // the retained grayscale copy. A leaked-then-disposed dependency would surface here.
+        using ImageHeightMapFunction function = LandscapeMaps.CreateFunction(KnownHeightMap.TibetanPlateau);
+        using LandscapeHeatmap heatmap = LandscapeRenderer.RenderHeatmap(function, width: 80, height: 60);
+
+        byte[] png = heatmap.ToPng();
+        Assert.That(png.Length, Is.GreaterThan(100));
+        Assert.That((png[0], png[1], png[2], png[3]), Is.EqualTo(((byte)0x89, (byte)0x50, (byte)0x4E, (byte)0x47)));
+    }
+
+    // =========================================================================
     // KEYSTONE: a real PNG heatmap, not ASCII.
     // =========================================================================
     [Test]

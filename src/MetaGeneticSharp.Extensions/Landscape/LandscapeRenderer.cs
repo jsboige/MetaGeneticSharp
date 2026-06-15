@@ -79,11 +79,20 @@ public static class LandscapeMaps
     /// Builds an <see cref="ImageHeightMapFunction"/> (the verbatim fitness function:
     /// grayscale pixel intensity with inverse-distance interpolation) over one of the four
     /// original maps. The returned function maximizes elevation = pixel brightness.
+    ///
+    /// <para><b>Image lifetime (M2).</b> <see cref="Load"/> returns a freshly decoded
+    /// <see cref="Image"/> that this method owns. The
+    /// <see cref="ImageHeightMapFunction.TargetImage"/> setter copies it into an internal grayscale
+    /// <see cref="DirectBitmap"/> (jsboige's <c>MakeGrayscaleImage()</c> @ d05826fd), so the loaded
+    /// source is no longer needed once assigned and is disposed here — only the retained grayscale
+    /// copy survives. This mirrors the <see cref="CreateFunctionFromFile"/> pattern and removes a
+    /// GDI+ handle leak (the source <see cref="Image"/> was previously never disposed). The
+    /// grayscale infrastructure is jsboige's @ d05826fd; only this wrapper's disposal is authored.</para>
     /// </summary>
     public static ImageHeightMapFunction CreateFunction(KnownHeightMap map)
     {
-        var function = new ImageHeightMapFunction { TargetImage = Load(map), Name = map.ToString() };
-        return function;
+        using Image source = Load(map);
+        return new ImageHeightMapFunction { TargetImage = source, Name = map.ToString() };
     }
 
     /// <summary>
