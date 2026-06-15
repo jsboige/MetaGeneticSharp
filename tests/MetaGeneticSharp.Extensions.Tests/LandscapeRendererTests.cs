@@ -307,4 +307,103 @@ public class LandscapeRendererTests
         Color color = LandscapeRenderer.GetColor(5.0, 5.0, 5.0);
         Assert.That((color.R, color.G, color.B), Is.EqualTo(((byte)0, (byte)255, (byte)255)));
     }
+
+    // =========================================================================
+    // L2: opt-in ColorQuantization.Round. The DEFAULT stays verbatim truncation
+    // ((int)(r * 255) @ d05826fd), so the rendered ramp is byte-identical to jsboige's
+    // original; Round is an additive, de-biased alternative that is never the default.
+    // =========================================================================
+    private static readonly double[] HueSamples =
+    {
+        0.0, 0.03, 0.08, 0.123, 0.2, 0.25, 0.333, 0.4, 0.45, 0.5,
+        0.55, 0.6, 0.666, 0.7, 0.75, 0.8, 0.85, 0.9, 0.97, 1.0,
+    };
+
+    [Test]
+    public void GetColorFromHSV_DefaultQuantization_IsVerbatimTruncation()
+    {
+        // Omitting the quantization argument must be identical to explicitly passing Truncate,
+        // i.e. the verbatim (int)(r * 255) cast. Pins that the default ramp never changed.
+        foreach (double hue in HueSamples)
+        {
+            Color def = LandscapeRenderer.GetColorFromHSV(hue);
+            Color trunc = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Truncate);
+            Assert.That(def.ToArgb(), Is.EqualTo(trunc.ToArgb()), $"default must equal Truncate at hue {hue}");
+        }
+    }
+
+    [Test]
+    public void GetColorFromHSV_RoundChannels_AreTruncationOrExactlyOneMore()
+    {
+        // Rounding never moves a channel below truncation and never above it by more than one
+        // byte: round(r*255) - (int)(r*255) is 0 (fraction < 0.5) or 1 (fraction >= 0.5).
+        // The same loop guards that the rounded channel is always clamped to the byte range.
+        foreach (double hue in HueSamples)
+        {
+            Color trunc = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Truncate);
+            Color round = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Round);
+
+            foreach ((int t, int r) in new[]
+                     { ((int)trunc.R, (int)round.R), ((int)trunc.G, (int)round.G), ((int)trunc.B, (int)round.B) })
+            {
+                Assert.That(r - t, Is.InRange(0, 1), $"round-vs-truncate delta out of [0,1] at hue {hue}");
+                Assert.That(r, Is.InRange(0, 255), $"rounded channel must stay a byte at hue {hue}");
+            }
+        }
+    }
+
+    [Test]
+    public void GetColorFromHSV_RoundQuantization_ActuallyDiffersFromTruncateSomewhere()
+    {
+        // The opt-in must be observable: at least one sampled hue has a channel whose r*255
+        // fraction is >= 0.5, so Round yields truncate + 1 (proving the default truncates it away).
+        bool foundDelta = false;
+        foreach (double hue in HueSamples)
+        {
+            Color trunc = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Truncate);
+            Color round = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Round);
+            if (trunc.ToArgb() != round.ToArgb())
+            {
+                foundDelta = true;
+                break;
+            }
+        }
+
+        Assert.That(foundDelta, Is.True,
+            "Round must differ from the verbatim Truncate on at least one hue (the L2 delta)");
+    }
+
+    [Test]
+    public void GetColorFromHSV_PureRampEndpoints_AreIdenticalUnderBothModes()
+    {
+        // The canonical ramp endpoints have integer channels (red = (255, 0, 0) at hue 0,
+        // cyan = (0, 255, 255) at hue 0.5), so rounding and truncation agree there: the opt-in
+        // only affects intermediate hues, never the endpoints jsboige's verbatim tests rely on.
+        foreach (double hue in new[] { 0.0, 0.5 })
+        {
+            Color trunc = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Truncate);
+            Color round = LandscapeRenderer.GetColorFromHSV(hue, quantization: ColorQuantization.Round);
+            Assert.That(round.ToArgb(), Is.EqualTo(trunc.ToArgb()), $"endpoints identical at hue {hue}");
+        }
+    }
+
+    [Test]
+    public void GetColor_ThreadsQuantizationThroughToHsv()
+    {
+        // GetColor forwards its quantization to GetColorFromHSV: GetColor(v, min, max, Round)
+        // equals GetColorFromHSV(ratio, Round) for the same computed ratio, and its default
+        // stays the verbatim truncated ramp.
+        const double fValue = 3.0, fMin = 0.0, fMax = 7.0; // ratio = 0.5 - 3/14 = 0.2857...
+        double ratio = 0.5 - ((fValue - fMin) / (2 * (fMax - fMin)));
+
+        Color defaultColor = LandscapeRenderer.GetColor(fValue, fMin, fMax);
+        Color truncColor = LandscapeRenderer.GetColor(fValue, fMin, fMax, ColorQuantization.Truncate);
+        Color roundColor = LandscapeRenderer.GetColor(fValue, fMin, fMax, ColorQuantization.Round);
+
+        Assert.That(defaultColor.ToArgb(), Is.EqualTo(truncColor.ToArgb()), "GetColor default = Truncate");
+        Assert.That(truncColor.ToArgb(),
+            Is.EqualTo(LandscapeRenderer.GetColorFromHSV(ratio, quantization: ColorQuantization.Truncate).ToArgb()));
+        Assert.That(roundColor.ToArgb(),
+            Is.EqualTo(LandscapeRenderer.GetColorFromHSV(ratio, quantization: ColorQuantization.Round).ToArgb()));
+    }
 }
