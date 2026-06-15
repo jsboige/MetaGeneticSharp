@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using GeneticSharp.Extensions.Mathematic.Functions;
 using GeneticSharp.Infrastructure.Framework.Images;
 
@@ -247,6 +248,20 @@ public static class LandscapeRenderer
     /// pixel is colored by <see cref="GetColor"/> from its fitness value; the global minimum
     /// pixel is marked White and the global maximum Black (verbatim from the controller's
     /// <c>BuildBitmap</c>, lines 581-595 @ d05826fd).
+    ///
+    /// <para><b>Parallel evaluation (L1).</b> The original GTK# controller (jsboige @ d05826fd)
+    /// sampled the canvas in a single sequential double loop. This authored renderer evaluates
+    /// the <c>width * height</c> fitness samples (~120k at the 400x300 default) with
+    /// <see cref="Parallel.For"/> over the rows: each row writes a disjoint slice of
+    /// <c>values</c> (<c>index = px + py * width</c>), so the writes never race, and the global
+    /// min/max reduction uses per-thread (<c>localInit</c>/<c>localFinally</c>) accumulators
+    /// merged under a lock. Reads of any image-backed function go through
+    /// <see cref="DirectBitmap.GetPixel"/>, a pure read of the pinned <c>Bits</c> array, so the
+    /// grayscale source is read-only during the render and safe to share across threads. The
+    /// merge keeps the <em>lowest</em> index on equal extrema, exactly reproducing the
+    /// first-occurrence tie-break of the sequential scan, so the rendered bitmap is
+    /// byte-identical to the single-threaded result. Only the parallel scheduling is authored;
+    /// the color ramp, extrema markers and sampling math remain jsboige's @ d05826fd.</para>
     /// </summary>
     public static LandscapeHeatmap RenderHeatmap(
         Func<double[], double> function,
@@ -264,20 +279,49 @@ public static class LandscapeRenderer
         var values = new double[width * height];
         double fMin = double.PositiveInfinity, fMax = double.NegativeInfinity;
         int minIndex = 0, maxIndex = 0;
+        object reduceLock = new();
 
-        for (int py = 0; py < height; py++)
-        {
-            double y = Map(py, height, yRange);
-            for (int px = 0; px < width; px++)
+        Parallel.For(
+            0,
+            height,
+            () => (fMin: double.PositiveInfinity, minIndex: int.MaxValue, fMax: double.NegativeInfinity, maxIndex: int.MaxValue),
+            (py, _, local) =>
             {
-                double x = Map(px, width, xRange);
-                double f = function(new[] { x, y });
-                int index = px + py * width;
-                values[index] = f;
-                if (f < fMin) { fMin = f; minIndex = index; }
-                if (f > fMax) { fMax = f; maxIndex = index; }
-            }
-        }
+                double y = Map(py, height, yRange);
+                int rowStart = py * width;
+                for (int px = 0; px < width; px++)
+                {
+                    double x = Map(px, width, xRange);
+                    double f = function(new[] { x, y });
+                    int index = rowStart + px;
+                    values[index] = f;
+                    // Strict comparisons keep the lowest index within this thread's rows
+                    // (scanned in increasing index order), matching the sequential first-win.
+                    if (f < local.fMin) { local.fMin = f; local.minIndex = index; }
+                    if (f > local.fMax) { local.fMax = f; local.maxIndex = index; }
+                }
+
+                return local;
+            },
+            local =>
+            {
+                lock (reduceLock)
+                {
+                    // On equal extrema across threads, prefer the lowest index so the result
+                    // matches the sequential scan's first-occurrence tie-break exactly.
+                    if (local.fMin < fMin || (local.fMin == fMin && local.minIndex < minIndex))
+                    {
+                        fMin = local.fMin;
+                        minIndex = local.minIndex;
+                    }
+
+                    if (local.fMax > fMax || (local.fMax == fMax && local.maxIndex < maxIndex))
+                    {
+                        fMax = local.fMax;
+                        maxIndex = local.maxIndex;
+                    }
+                }
+            });
 
         var bitmap = new DirectBitmap(width, height);
         for (int index = 0; index < values.Length; index++)
