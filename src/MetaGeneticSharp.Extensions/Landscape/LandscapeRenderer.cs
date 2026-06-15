@@ -125,6 +125,27 @@ public static class LandscapeMaps
             Name = name ?? Path.GetFileNameWithoutExtension(path),
         };
     }
+
+    /// <summary>
+    /// Builds a <see cref="BilinearHeightMapFunction"/> over an arbitrary in-memory image — the
+    /// smoother, additive sibling of <see cref="CreateFunctionFromImage"/>. Same grayscale
+    /// elevation field and same ranges, but sampled with true bilinear interpolation, which is
+    /// continuous on the grid lines where the verbatim inverse-distance scheme of
+    /// <see cref="ImageHeightMapFunction"/> falls back to the nearest floored pixel (a stair-step).
+    /// Use it side by side with <see cref="CreateFunctionFromImage"/> to compare the two
+    /// interpolations on the same source (the MGS-7 "IDW vs bilinéaire" exercise).
+    ///
+    /// The original is unchanged and remains the default; this only adds a choice. The
+    /// <see cref="BilinearHeightMapFunction.TargetImage"/> setter copies <paramref name="image"/>
+    /// to grayscale, so the caller keeps ownership of the argument. Credit: jsboige @ d05826fd.
+    /// </summary>
+    /// <param name="image">Any image to read as a height field (its R channel after grayscale).</param>
+    /// <param name="name">Optional label (defaults to "CustomImageBilinear").</param>
+    public static BilinearHeightMapFunction CreateBilinearFunctionFromImage(Image image, string? name = null)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        return new BilinearHeightMapFunction { TargetImage = image, Name = name ?? "CustomImageBilinear" };
+    }
 }
 
 /// <summary>
