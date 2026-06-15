@@ -180,8 +180,21 @@ public sealed class LandscapeHeatmap : IDisposable
         }
     }
 
-    /// <summary>Exports the heatmap as a PNG byte array (image/png) for inline notebook display.</summary>
-    public byte[] ToPng()
+    /// <summary>
+    /// Exports the heatmap as a PNG byte array (image/png) for inline notebook display.
+    /// Cross-platform by default: delegates to <see cref="SkiaLandscapeRenderer.EncodePng(DirectBitmap)"/>
+    /// (SkiaSharp), so the same graphic heatmap exports without the GDI+ encoder that is Windows-only
+    /// on .NET 6+. The verbatim GDI+ path remains available as <see cref="ToPngGdi"/> for parity.
+    /// </summary>
+    public byte[] ToPng() => SkiaLandscapeRenderer.EncodePng(Bitmap);
+
+    /// <summary>
+    /// The original verbatim GDI+ PNG export (<c>Bitmap.Save(stream, ImageFormat.Png)</c>).
+    /// Windows-only (System.Drawing.Common, .NET 6+); kept for parity and credit. Prefer
+    /// <see cref="ToPng"/> for cross-platform rendering.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public byte[] ToPngGdi()
     {
         using var stream = new MemoryStream();
         Bitmap.Bitmap.Save(stream, ImageFormat.Png);
