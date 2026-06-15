@@ -23,6 +23,33 @@ public class KnownFunctionsTests
 
     private static double Evaluate(IFitness fitness, params double[] xs) => fitness.Evaluate(Chrom(xs));
 
+    /// <summary>
+    /// Minimal <see cref="IChromosome"/> stub returning a fixed gene array of any length (including
+    /// 0 or 1). <see cref="ChromosomeBase"/> enforces a >= 2 gene minimum in its constructor, so it
+    /// cannot produce the sub-dimensional inputs needed to exercise the L4 guards on
+    /// <see cref="BoothFitness"/> (fixed 2-D) and <see cref="DixonPriceFitness"/> (needs >= 1 gene).
+    /// Only <see cref="GetGenes"/> is consulted by <see cref="KnownFunctionGenes.AsDoubles"/>.
+    /// </summary>
+    private sealed class FixedGenesChromosome : IChromosome
+    {
+        private readonly Gene[] _genes;
+        public FixedGenesChromosome(params double[] values)
+            => _genes = values.Select(v => new Gene(v)).ToArray();
+
+        public Gene[] GetGenes() => _genes;
+        public int Length => _genes.Length;
+        public double? Fitness { get; set; }
+        public Gene GetGene(int index) => _genes[index];
+
+        public Gene GenerateGene(int geneIndex) => throw new NotSupportedException();
+        public void ReplaceGene(int index, Gene gene) => throw new NotSupportedException();
+        public void ReplaceGenes(int startIndex, Gene[] genes) => throw new NotSupportedException();
+        public void Resize(int newLength) => throw new NotSupportedException();
+        public IChromosome CreateNew() => throw new NotSupportedException();
+        public IChromosome Clone() => throw new NotSupportedException();
+        public int CompareTo(IChromosome? other) => throw new NotSupportedException();
+    }
+
     // =========================================================================
     // Sphere (De Jong F1): f(x) = sum(x_i^2), optimum f(0)=0, bounds [-5.12, 5.12].
     // =========================================================================
@@ -188,6 +215,26 @@ public class KnownFunctionsTests
         Assert.That(Evaluate(new BoothFitness(), 0.0, 0.0), Is.LessThan(opt));
     }
 
+    [Test]
+    public void Booth_FewerThanTwoGenes_ThrowsArgumentException()
+    {
+        // L4 guard: Booth is fixed 2-D. A 1-gene or empty chromosome (only reachable via the
+        // stub, since ChromosomeBase enforces >= 2) must throw a clear ArgumentException rather
+        // than a bare IndexOutOfRangeException from x[1].
+        var fitness = new BoothFitness();
+        Assert.Throws<ArgumentException>(() => fitness.Evaluate(new FixedGenesChromosome(5.0)));
+        Assert.Throws<ArgumentException>(() => fitness.Evaluate(new FixedGenesChromosome()));
+    }
+
+    [Test]
+    public void Booth_ExactlyTwoGenes_EvaluatesThroughGuard()
+    {
+        // The guard is a lower bound only: the documented optimum f(1,3)=0 still evaluates, and
+        // the stub path (length == 2) agrees with the DoubleArrayChromosome path.
+        Assert.That(new BoothFitness().Evaluate(new FixedGenesChromosome(1.0, 3.0)),
+            Is.EqualTo(0.0).Within(1e-12));
+    }
+
     // =========================================================================
     // Dixon-Price: optimum x_i=2^(-(2^i-2)/2^i) -> x1=1, x2=2^-0.5≈0.7071, f=0.
     // bounds [-10, 10].
@@ -207,6 +254,27 @@ public class KnownFunctionsTests
         // At x=(0,0): (0-1)^2 + 2*(0-0)^2 = 1 -> fitness -1.
         Assert.That(Evaluate(new DixonPriceFitness(), 0.0, 0.0), Is.EqualTo(-1.0).Within(1e-9));
         Assert.That(Evaluate(new DixonPriceFitness(), 0.0, 0.0), Is.LessThan(opt));
+    }
+
+    [Test]
+    public void DixonPrice_EmptyChromosome_ThrowsArgumentException()
+    {
+        // L4 guard: Dixon-Price indexes x[0] for the (x_1-1)^2 term. An empty chromosome (only
+        // reachable via the stub) must throw a clear ArgumentException, not IndexOutOfRangeException.
+        Assert.Throws<ArgumentException>(
+            () => new DixonPriceFitness().Evaluate(new FixedGenesChromosome()));
+    }
+
+    [Test]
+    public void DixonPrice_SingleGene_EvaluatesValleyless()
+    {
+        // A single gene is the valid degenerate case the guard intentionally allows (lower bound 1,
+        // not 2): only the (x_1-1)^2 term contributes; the valley sum (i >= 1) is empty.
+        // At x=(1): (1-1)^2 = 0 -> fitness 0. At x=(3): (3-1)^2 = 4 -> fitness -4.
+        Assert.That(new DixonPriceFitness().Evaluate(new FixedGenesChromosome(1.0)),
+            Is.EqualTo(0.0).Within(1e-12));
+        Assert.That(new DixonPriceFitness().Evaluate(new FixedGenesChromosome(3.0)),
+            Is.EqualTo(-4.0).Within(1e-12));
     }
 
     // =========================================================================
