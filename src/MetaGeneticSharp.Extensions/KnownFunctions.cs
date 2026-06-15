@@ -182,6 +182,14 @@ namespace MetaGeneticSharp
         public double Evaluate(IChromosome chromosome)
         {
             double[] x = KnownFunctionGenes.AsDoubles(chromosome);
+            // L4 guard (additive robustness): Booth is a fixed 2-D function and indexes x[0]/x[1]
+            // directly. A chromosome with fewer than 2 genes would otherwise throw a bare
+            // IndexOutOfRangeException with no context; this surfaces the dimensional contract as
+            // a clear ArgumentException instead. Credit jsboige @ d05826fd for the benchmark suite.
+            if (x.Length < 2)
+                throw new ArgumentException(
+                    $"Booth is a fixed 2-D function and requires at least 2 genes; got {x.Length}.",
+                    nameof(chromosome));
             double a = x[0] + 2.0 * x[1] - 7.0;
             double b = 2.0 * x[0] + x[1] - 5.0;
             return -(a * a + b * b);
@@ -197,6 +205,14 @@ namespace MetaGeneticSharp
         public double Evaluate(IChromosome chromosome)
         {
             double[] x = KnownFunctionGenes.AsDoubles(chromosome);
+            // L4 guard (additive robustness): Dixon-Price indexes x[0] directly (the (x_1-1)^2
+            // term). An empty chromosome would otherwise throw a bare IndexOutOfRangeException;
+            // this surfaces the requirement as a clear ArgumentException. A single gene is a valid
+            // degenerate case (the valley sum is empty). Credit jsboige @ d05826fd.
+            if (x.Length < 1)
+                throw new ArgumentException(
+                    "Dixon-Price requires at least 1 gene; got an empty chromosome.",
+                    nameof(chromosome));
             double s = (x[0] - 1.0) * (x[0] - 1.0);
             for (int i = 1; i < x.Length; i++)
             {
