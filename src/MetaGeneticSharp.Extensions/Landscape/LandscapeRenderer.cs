@@ -85,6 +85,46 @@ public static class LandscapeMaps
         var function = new ImageHeightMapFunction { TargetImage = Load(map), Name = map.ToString() };
         return function;
     }
+
+    /// <summary>
+    /// Builds an <see cref="ImageHeightMapFunction"/> over an arbitrary in-memory image — the
+    /// <see cref="LandscapeMode.CustomImage"/> source, now first-class and symmetric with
+    /// <see cref="CreateFunction(KnownHeightMap)"/>. Any bitmap becomes an elevation field:
+    /// grayscale pixel intensity (R channel) read with the verbatim inverse-distance
+    /// interpolation of <see cref="ImageHeightMapFunction"/>.
+    ///
+    /// The <see cref="ImageHeightMapFunction.TargetImage"/> setter copies <paramref name="image"/>
+    /// into an internal grayscale bitmap, so the caller keeps ownership of the argument and may
+    /// dispose it after this call returns.
+    /// </summary>
+    /// <param name="image">Any image to read as a height field (its R channel after grayscale).</param>
+    /// <param name="name">Optional label for the function (defaults to "CustomImage").</param>
+    public static ImageHeightMapFunction CreateFunctionFromImage(Image image, string? name = null)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        return new ImageHeightMapFunction { TargetImage = image, Name = name ?? "CustomImage" };
+    }
+
+    /// <summary>
+    /// Builds an <see cref="ImageHeightMapFunction"/> from an image file on disk (PNG, JPEG, ...).
+    /// Completes the three-mode symmetry: <see cref="CreateFunction(KnownHeightMap)"/> for the
+    /// four shipped maps, <see cref="CreateFunctionFromImage"/> for an in-memory bitmap, and this
+    /// overload for a file path. The source image is loaded, copied to grayscale by the
+    /// <see cref="ImageHeightMapFunction.TargetImage"/> setter, then disposed here — only the
+    /// internal grayscale copy is retained (no source-image leak).
+    /// </summary>
+    /// <param name="path">Path to an image file readable by <see cref="Image.FromFile(string)"/>.</param>
+    /// <param name="name">Optional label (defaults to the file name without extension).</param>
+    public static ImageHeightMapFunction CreateFunctionFromFile(string path, string? name = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        using Image source = Image.FromFile(path);
+        return new ImageHeightMapFunction
+        {
+            TargetImage = source,
+            Name = name ?? Path.GetFileNameWithoutExtension(path),
+        };
+    }
 }
 
 /// <summary>
