@@ -154,6 +154,108 @@ public class LandscapeRendererTests
         Assert.That(hasBlack, Is.True, "global maximum marked Black");
     }
 
+    // =========================================================================
+    // L1: the parallel canvas evaluation must be byte-identical to the original
+    // single-threaded scan (deterministic reduction, lowest-index tie-break).
+    // =========================================================================
+    [Test]
+    public void RenderHeatmap_Parallel_MatchesSequentialReference_PixelForPixel()
+    {
+        // An asymmetric ripple so the colors vary across the whole canvas.
+        static double Ripple(double[] c) =>
+            System.Math.Sin(c[0]) * System.Math.Cos(c[1]) - 0.1 * (c[0] * c[0] + c[1] * c[1]);
+
+        (double min, double max) xRange = (-3.0, 3.0);
+        (double min, double max) yRange = (-3.0, 3.0);
+        const int width = 71, height = 53; // non-square, prime-ish -> uneven thread partitions
+
+        using LandscapeHeatmap parallel = LandscapeRenderer.RenderHeatmap(Ripple, xRange, yRange, width, height);
+
+        // Independent sequential reference mirroring the pre-L1 single-thread algorithm
+        // (same Map formula, same first-occurrence extrema, same verbatim GetColor ramp).
+        var values = new double[width * height];
+        double fMin = double.PositiveInfinity, fMax = double.NegativeInfinity;
+        int minIndex = 0, maxIndex = 0;
+        for (int py = 0; py < height; py++)
+        {
+            double y = yRange.min + (yRange.max - yRange.min) * py / (height - 1);
+            for (int px = 0; px < width; px++)
+            {
+                double x = xRange.min + (xRange.max - xRange.min) * px / (width - 1);
+                double f = Ripple(new[] { x, y });
+                int index = px + py * width;
+                values[index] = f;
+                if (f < fMin) { fMin = f; minIndex = index; }
+                if (f > fMax) { fMax = f; maxIndex = index; }
+            }
+        }
+
+        using var expected = new DirectBitmap(width, height);
+        for (int i = 0; i < values.Length; i++)
+        {
+            expected.SetPixel(i % width, i / width, LandscapeRenderer.GetColor(values[i], fMin, fMax));
+        }
+
+        expected.SetPixel(minIndex % width, minIndex / width, Color.White);
+        expected.SetPixel(maxIndex % width, maxIndex / width, Color.Black);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                Assert.That(parallel.Bitmap.GetPixel(x, y).ToArgb(), Is.EqualTo(expected.GetPixel(x, y).ToArgb()),
+                    $"pixel ({x}, {y}) differs from the sequential reference");
+            }
+        }
+    }
+
+    [Test]
+    public void RenderHeatmap_TiedExtrema_MarksLowestIndexPixel_LikeSequential()
+    {
+        // f depends only on x: f(x, y) = -(x^2). Over [-2, 2] with width 65 the coordinate x = 0
+        // falls exactly on px = 32, so the whole column px = 32 ties for the maximum (f = 0) and
+        // the columns px = 0 / px = 64 tie for the minimum (f = -4). The sequential scan marks the
+        // FIRST (lowest-index) pixel of each plateau; the parallel reduction must reproduce that:
+        // max -> (32, 0), min -> (0, 0). (The ramp uses saturation = value = 1, so it never emits
+        // pure Black or White -> those colors come only from the two extrema markers.)
+        static double XOnly(double[] c) => -(c[0] * c[0]);
+        const int width = 65, height = 65;
+
+        using LandscapeHeatmap heatmap = LandscapeRenderer.RenderHeatmap(
+            XOnly, xRange: (-2.0, 2.0), yRange: (-2.0, 2.0), width, height);
+
+        int blackCount = 0, whiteCount = 0;
+        (int x, int y) black = (-1, -1), white = (-1, -1);
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int argb = heatmap.Bitmap.GetPixel(x, y).ToArgb();
+                if (argb == Color.Black.ToArgb()) { blackCount++; black = (x, y); }
+                if (argb == Color.White.ToArgb()) { whiteCount++; white = (x, y); }
+            }
+        }
+
+        Assert.That(blackCount, Is.EqualTo(1), "exactly one maximum (Black) marker");
+        Assert.That(whiteCount, Is.EqualTo(1), "exactly one minimum (White) marker");
+        Assert.That(black, Is.EqualTo((32, 0)), "max marker at the lowest-index pixel of the x = 0 plateau");
+        Assert.That(white, Is.EqualTo((0, 0)), "min marker at the lowest-index pixel of the x = +/-2 plateau");
+    }
+
+    [Test]
+    public void RenderHeatmap_Parallel_IsDeterministicAcrossRuns()
+    {
+        // The parallel reduction must give bit-identical output on every run regardless of how
+        // the thread pool partitions the rows.
+        static double Bumps(double[] c) => System.Math.Sin(c[0] * 1.3) + System.Math.Cos(c[1] * 0.7);
+        (double min, double max) range = (-4.0, 4.0);
+
+        using LandscapeHeatmap first = LandscapeRenderer.RenderHeatmap(Bumps, range, range, 96, 72);
+        using LandscapeHeatmap second = LandscapeRenderer.RenderHeatmap(Bumps, range, range, 96, 72);
+
+        Assert.That(second.ToPng(), Is.EqualTo(first.ToPng()), "two parallel renders must be byte-identical");
+    }
+
     [Test]
     public void Plot_BestIndividual_PaintsAquaMarker()
     {
