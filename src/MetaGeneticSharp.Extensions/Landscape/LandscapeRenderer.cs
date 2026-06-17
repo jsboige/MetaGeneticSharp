@@ -234,6 +234,37 @@ public sealed class LandscapeHeatmap : IDisposable
     }
 
     /// <summary>
+    /// Superimposes the GA population with optional <em>per-individual</em> marker colors for the
+    /// "colored islands" overlay. When <paramref name="individualColors"/> is supplied and its count
+    /// matches the materialized population count, individual <c>i</c> is drawn in
+    /// <c>individualColors[i]</c> instead of the default BlueViolet — visualizing a population
+    /// structured into islands/sub-populations (each island a distinct color) and the basin of
+    /// attraction each converges toward. When <c>null</c> or a count mismatch, the render falls
+    /// back to the verbatim single-color BlueViolet markers (byte-identical to the no-colors
+    /// <see cref="Plot(IEnumerable{double[]}, double[])"/> overload). Marker shape is the verbatim
+    /// 5x5 diamond of the controller's <c>DrawFunctionPoint</c>. The best individual is always Aqua.
+    /// </summary>
+    public void Plot(IEnumerable<double[]> population, double[]? best, IReadOnlyList<System.Drawing.Color>? individualColors)
+    {
+        ArgumentNullException.ThrowIfNull(population);
+        IList<double[]> materialized = population as IList<double[]> ?? new List<double[]>(population);
+        bool usePerIndividualColors = individualColors is not null && individualColors.Count == materialized.Count;
+        for (int i = 0; i < materialized.Count; i++)
+        {
+            double[] individual = materialized[i];
+            (int px, int py) = ToPixel(individual[0], individual[1]);
+            System.Drawing.Color marker = usePerIndividualColors ? individualColors![i] : LandscapeMaps.IndividualColor;
+            LandscapeRenderer.DrawFunctionPoint(Bitmap, px, py, marker);
+        }
+
+        if (best is not null)
+        {
+            (int px, int py) = ToPixel(best[0], best[1]);
+            LandscapeRenderer.DrawFunctionPoint(Bitmap, px, py, LandscapeMaps.BestColor);
+        }
+    }
+
+    /// <summary>
     /// Exports the heatmap as a PNG byte array (image/png) for inline notebook display.
     /// Cross-platform by default: delegates to <see cref="SkiaLandscapeRenderer.EncodePng(DirectBitmap)"/>
     /// (SkiaSharp), so the same graphic heatmap exports without the GDI+ encoder that is Windows-only
