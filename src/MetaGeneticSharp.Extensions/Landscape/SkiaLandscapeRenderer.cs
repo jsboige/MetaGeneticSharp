@@ -121,12 +121,92 @@ public static class SkiaLandscapeRenderer
         skBitmap.SetPixel(minIndex % width, minIndex / width, SKColors.White);
         skBitmap.SetPixel(maxIndex % width, maxIndex / width, SKColors.Black);
 
+        return RenderHeatmapPng(function, xRange, yRange, width, height, population, best, individualColors: null);
+    }
+
+    /// <summary>
+    /// Renders any 2D fitness function over the given input ranges directly onto a SkiaSharp
+    /// surface and returns the PNG bytes — no <see cref="DirectBitmap"/>, no GDI+, so the whole
+    /// path runs on a Linux kernel. The coloring is the verbatim ramp (minimum pixel White,
+    /// maximum Black; <see cref="LandscapeRenderer.GetColor"/>), and the population markers reuse
+    /// the verbatim 5x5 diamond (<c>|i| + |j| &lt; 4</c>).
+    /// </summary>
+    /// <param name="individualColors">
+    /// Optional per-individual marker colors for the <paramref name="population"/>. When provided
+    /// AND its count matches the materialized population count, individual <c>i</c> is drawn in
+    /// <c>individualColors[i]</c> instead of the default BlueViolet — this is the "colored islands"
+    /// overlay that visualizes a population structured into islands/sub-populations (each island a
+    /// distinct color), revealing the basins of attraction each island converges toward. When
+    /// <c>null</c> or a count mismatch, the render falls back to the verbatim single-color
+    /// BlueViolet markers (byte-identical to the no-colors overload) — <em>no pendulum</em>: the
+    /// original single-color behavior is preserved exactly.
+    /// </param>
+    /// <param name="function">The fitness function (x, y) -> value.</param>
+    /// <param name="xRange">Input range mapped across the canvas width.</param>
+    /// <param name="yRange">Input range mapped across the canvas height.</param>
+    /// <param name="width">Canvas width in pixels (>= 2).</param>
+    /// <param name="height">Canvas height in pixels (>= 2).</param>
+    /// <param name="population">Optional GA population to superimpose.</param>
+    /// <param name="best">Optional current-best individual to superimpose (Aqua diamond).</param>
+    public static byte[] RenderHeatmapPng(
+        Func<double[], double> function,
+        (double min, double max) xRange,
+        (double min, double max) yRange,
+        int width,
+        int height,
+        IEnumerable<double[]>? population,
+        double[]? best,
+        IReadOnlyList<System.Drawing.Color>? individualColors)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        if (width < 2 || height < 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), "Heatmap canvas must be at least 2x2.");
+        }
+
+        var values = new double[width * height];
+        double fMin = double.PositiveInfinity, fMax = double.NegativeInfinity;
+        int minIndex = 0, maxIndex = 0;
+
+        for (int py = 0; py < height; py++)
+        {
+            double y = Map(py, height, yRange);
+            for (int px = 0; px < width; px++)
+            {
+                double x = Map(px, width, xRange);
+                double f = function(new[] { x, y });
+                int index = px + py * width;
+                values[index] = f;
+                if (f < fMin) { fMin = f; minIndex = index; }
+                if (f > fMax) { fMax = f; maxIndex = index; }
+            }
+        }
+
+        var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var skBitmap = new SKBitmap(info);
+        for (int index = 0; index < values.Length; index++)
+        {
+            System.Drawing.Color c = LandscapeRenderer.GetColor(values[index], fMin, fMax);
+            skBitmap.SetPixel(index % width, index / width, new SKColor(c.R, c.G, c.B));
+        }
+
+        // Mark the extrema: minimum White, maximum Black (controller BuildBitmap @ d05826fd).
+        skBitmap.SetPixel(minIndex % width, minIndex / width, SKColors.White);
+        skBitmap.SetPixel(maxIndex % width, maxIndex / width, SKColors.Black);
+
         if (population is not null)
         {
-            foreach (double[] individual in population)
+            // Materialize once so the colors overlay can index by position; fall back to the
+            // verbatim single-color marker when no per-individual palette is supplied or the
+            // palette length does not line up with the population.
+            IList<double[]> materialized = population as IList<double[]> ?? new List<double[]>(population);
+            bool usePerIndividualColors = individualColors is not null && individualColors.Count == materialized.Count;
+            for (int i = 0; i < materialized.Count; i++)
             {
+                double[] individual = materialized[i];
                 (int px, int py) = ToPixel(individual[0], individual[1], xRange, yRange, width, height);
-                DrawDiamond(skBitmap, px, py, ToSkColor(LandscapeMaps.IndividualColor));
+                System.Drawing.Color marker = usePerIndividualColors ? individualColors![i] : LandscapeMaps.IndividualColor;
+                DrawDiamond(skBitmap, px, py, ToSkColor(marker));
             }
         }
 

@@ -153,4 +153,103 @@ public class SkiaLandscapeRendererTests
         Assert.Throws<ArgumentNullException>(
             () => SkiaLandscapeRenderer.RenderHeatmapPng((Func<double[], double>)null!, (0, 1), (0, 1)));
     }
+
+    // ---- Colored-islands overlay (per-individual marker colors) ----
+
+    /// <summary>
+    /// A flat-zero fitness makes the whole canvas a single ramp color, so the only non-ramp pixels
+    /// are the population diamonds — convenient for asserting marker colors in isolation.
+    /// </summary>
+    private static double FlatZero(double[] coords) => 0.0;
+
+    private static SKColor PixelAt(byte[] png, int x, int y)
+    {
+        using SKBitmap decoded = SKBitmap.Decode(png);
+        return decoded.GetPixel(x, y);
+    }
+
+    [Test]
+    public void RenderHeatmapPng_NullIndividualColors_FallsBackToSingleColor()
+    {
+        // NO-PENDULUM: a null palette renders byte-identical to the no-colors overload — every
+        // individual marker is the verbatim BlueViolet (138, 43, 226), nothing changes.
+        const int width = 41, height = 41;
+        var population = new[] { new[] { 2.0, 0.0 }, new[] { -2.0, 0.0 } };
+
+        byte[] withoutColors = SkiaLandscapeRenderer.RenderHeatmapPng(
+            FlatZero, (-4.0, 4.0), (-4.0, 4.0), width, height, population, best: null);
+        byte[] withNullColors = SkiaLandscapeRenderer.RenderHeatmapPng(
+            FlatZero, (-4.0, 4.0), (-4.0, 4.0), width, height, population, best: null, individualColors: null);
+
+        Assert.That(withNullColors, Is.EqualTo(withoutColors));
+    }
+
+    [Test]
+    public void RenderHeatmapPng_PerIndividualColors_TintsEachMarker()
+    {
+        // Each individual takes its own palette color: island 0 = Red, island 1 = Lime.
+        const int width = 81, height = 81;
+        var population = new[] { new[] { 2.0, 0.0 }, new[] { -2.0, 0.0 } };
+        var colors = new List<System.Drawing.Color>
+        {
+            System.Drawing.Color.Red,    // (255, 0, 0)
+            System.Drawing.Color.Lime,   // (0, 255, 0)
+        };
+
+        byte[] png = SkiaLandscapeRenderer.RenderHeatmapPng(
+            FlatZero, (-4.0, 4.0), (-4.0, 4.0), width, height, population, best: null, individualColors: colors);
+
+        // Island 0 at x=2.0 -> pixel (width * 0.75, height/2); its diamond center is Red.
+        int px0 = (int)Math.Round(0.75 * (width - 1));
+        SKColor marker0 = PixelAt(png, px0, height / 2);
+        Assert.That(marker0.Red, Is.EqualTo(255));
+        Assert.That(marker0.Green, Is.EqualTo(0));
+        Assert.That(marker0.Blue, Is.EqualTo(0));
+
+        // Island 1 at x=-2.0 -> pixel (width * 0.25, height/2); its diamond center is Lime.
+        int px1 = (int)Math.Round(0.25 * (width - 1));
+        SKColor marker1 = PixelAt(png, px1, height / 2);
+        Assert.That(marker1.Red, Is.EqualTo(0));
+        Assert.That(marker1.Green, Is.EqualTo(255));
+        Assert.That(marker1.Blue, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void RenderHeatmapPng_ColorCountMismatch_FallsBackToSingleColor()
+    {
+        // A palette whose count does not match the population falls back to single-color (no crash,
+        // no partial coloring): both markers are the verbatim BlueViolet.
+        const int width = 81, height = 81;
+        var population = new[] { new[] { 2.0, 0.0 }, new[] { -2.0, 0.0 } };
+        var mismatched = new List<System.Drawing.Color> { System.Drawing.Color.Red }; // 1 != 2
+
+        byte[] png = SkiaLandscapeRenderer.RenderHeatmapPng(
+            FlatZero, (-4.0, 4.0), (-4.0, 4.0), width, height, population, best: null, individualColors: mismatched);
+
+        int px0 = (int)Math.Round(0.75 * (width - 1));
+        SKColor marker0 = PixelAt(png, px0, height / 2);
+        // BlueViolet = (138, 43, 226).
+        Assert.That(marker0.Red, Is.EqualTo(138));
+        Assert.That(marker0.Green, Is.EqualTo(43));
+        Assert.That(marker0.Blue, Is.EqualTo(226));
+    }
+
+    [Test]
+    public void RenderHeatmapPng_PerIndividualColors_BestStaysAqua()
+    {
+        // Even with per-individual colors, the best individual is always the verbatim Aqua marker.
+        const int width = 81, height = 81;
+        var best = new[] { 0.0, 0.0 };
+        var colors = new List<System.Drawing.Color> { System.Drawing.Color.Red };
+
+        byte[] png = SkiaLandscapeRenderer.RenderHeatmapPng(
+            Paraboloid, (-4.0, 4.0), (-4.0, 4.0), width, height,
+            population: new[] { new[] { 2.0, 2.0 } }, best: best, individualColors: colors);
+
+        // Aqua arm two pixels right of center (center is the Black max, overdrawn by the Aqua body).
+        SKColor arm = PixelAt(png, width / 2 + 2, height / 2);
+        Assert.That(arm.Red, Is.EqualTo(0));
+        Assert.That(arm.Green, Is.EqualTo(255));
+        Assert.That(arm.Blue, Is.EqualTo(255));
+    }
 }
