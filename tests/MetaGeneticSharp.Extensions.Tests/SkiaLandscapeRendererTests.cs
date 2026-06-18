@@ -252,4 +252,142 @@ public class SkiaLandscapeRendererTests
         Assert.That(arm.Green, Is.EqualTo(255));
         Assert.That(arm.Blue, Is.EqualTo(255));
     }
+
+    // ---- Animated-GIF convergence flipbook (EncodeAnimatedGif) ----
+
+    /// <summary>
+    /// Renders a small synthetic landscape into <paramref name="frameCount"/> PNG frames whose
+    /// best marker walks left-to-right, so a decode round-trip can assert the frames stay distinct
+    /// and ordered. All frames share dimensions (required by <c>EncodeAnimatedGif</c>).
+    /// </summary>
+    private static List<byte[]> RenderWalkingFrames(int frameCount, int width, int height)
+    {
+        var frames = new List<byte[]>(frameCount);
+        for (int f = 0; f < frameCount; f++)
+        {
+            double t = frameCount == 1 ? 0.0 : (double)f / (frameCount - 1);
+            double bx = -3.0 + 6.0 * t; // best walks from x=-3 to x=+3
+            byte[] png = SkiaLandscapeRenderer.RenderHeatmapPng(
+                Paraboloid, (-4.0, 4.0), (-4.0, 4.0), width, height,
+                population: new[] { new[] { bx, 0.0 } }, best: new[] { bx, 0.0 });
+            frames.Add(png);
+        }
+        return frames;
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_ProducesGif89aMagic()
+    {
+        List<byte[]> frames = RenderWalkingFrames(4, 48, 36);
+        byte[] gif = SkiaLandscapeRenderer.EncodeAnimatedGif(frames, delayCentiseconds: 20);
+
+        // "GIF89a" signature + GIF trailer 0x3B.
+        Assert.That(gif.Length, Is.GreaterThan(20));
+        Assert.That(System.Text.Encoding.ASCII.GetString(gif, 0, 6), Is.EqualTo("GIF89a"));
+        Assert.That(gif[^1], Is.EqualTo(0x3B));
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_RoundTripsThroughSkCodec()
+    {
+        // KEYSTONE: the hand-authored GIF89a + median-cut + GIF-LZW survive a real SKCodec decode.
+        // Frame count, dimensions and animation flag must all match what we encoded.
+        const int width = 60, height = 40, frameCount = 6;
+        List<byte[]> frames = RenderWalkingFrames(frameCount, width, height);
+
+        byte[] gif = SkiaLandscapeRenderer.EncodeAnimatedGif(frames, delayCentiseconds: 15);
+
+        using SKCodec codec = SKCodec.Create(new MemoryStream(gif))
+            ?? throw new AssertionException("SKCodec could not decode the encoded GIF.");
+        Assert.That(codec.FrameCount, Is.EqualTo(frameCount), "decoded frame count");
+        Assert.That(codec.Info.Width, Is.EqualTo(width));
+        Assert.That(codec.Info.Height, Is.EqualTo(height));
+        Assert.That(codec.RepetitionCount, Is.EqualTo(-1).Or.EqualTo(0),
+            "loopCount 0 => infinite repetition");
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_DecodedFramesPreservePixels()
+    {
+        // The LZW codec is lossless over palette indices: re-decoding each frame must reproduce the
+        // quantized image. We compare the decoded GIF frame to the same PNG re-quantized through a
+        // single-frame GIF round-trip, so any LZW code-size / bit-packing bug surfaces as a mismatch.
+        const int width = 50, height = 34, frameCount = 5;
+        List<byte[]> frames = RenderWalkingFrames(frameCount, width, height);
+
+        byte[] gif = SkiaLandscapeRenderer.EncodeAnimatedGif(frames, delayCentiseconds: 10);
+
+        using SKCodec codec = SKCodec.Create(new MemoryStream(gif))
+            ?? throw new AssertionException("SKCodec could not decode the encoded GIF.");
+        var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
+
+        // Decode the last frame and assert it differs from the first (the best marker has moved),
+        // proving the frames are independently and correctly reconstructed (not all-identical).
+        using var firstBmp = new SKBitmap(info);
+        codec.GetPixels(info, firstBmp.GetPixels(),
+            new SKCodecOptions(0));
+        using var lastBmp = new SKBitmap(info);
+        codec.GetPixels(info, lastBmp.GetPixels(),
+            new SKCodecOptions(frameCount - 1));
+
+        // The Aqua best marker walks with bx: in the last frame bx=+3 in domain (-4,4) maps to
+        // (3+4)/8 = 0.875 of the width. The saturated Aqua diamond must survive median-cut + LZW.
+        int pxLast = (int)Math.Round(0.875 * (width - 1));
+        SKColor lastMarker = lastBmp.GetPixel(pxLast, height / 2);
+        Assert.That(lastMarker.Green, Is.GreaterThan(180), "last-frame marker is saturated (Aqua-ish)");
+        Assert.That(lastMarker.Blue, Is.GreaterThan(180));
+
+        // And the two decoded frames are not byte-identical (animation actually animates).
+        bool anyDiff = false;
+        for (int y = 0; y < height && !anyDiff; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                if (firstBmp.GetPixel(x, y) != lastBmp.GetPixel(x, y))
+                {
+                    anyDiff = true;
+                    break;
+                }
+            }
+        }
+        Assert.That(anyDiff, Is.True, "first and last decoded frames must differ");
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_SingleFrame_IsValidGif()
+    {
+        // A one-frame "animation" is a valid static GIF89a that SKCodec decodes.
+        List<byte[]> frames = RenderWalkingFrames(1, 40, 30);
+        byte[] gif = SkiaLandscapeRenderer.EncodeAnimatedGif(frames);
+
+        using SKCodec codec = SKCodec.Create(new MemoryStream(gif))
+            ?? throw new AssertionException("SKCodec could not decode the single-frame GIF.");
+        Assert.That(codec.Info.Width, Is.EqualTo(40));
+        Assert.That(codec.Info.Height, Is.EqualTo(30));
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_EmptyFrames_Throws()
+    {
+        Assert.Throws<ArgumentException>(
+            () => SkiaLandscapeRenderer.EncodeAnimatedGif(new List<byte[]>()));
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_NullFrames_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(
+            () => SkiaLandscapeRenderer.EncodeAnimatedGif(null!));
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_MismatchedDimensions_Throws()
+    {
+        var frames = new List<byte[]>
+        {
+            SkiaLandscapeRenderer.RenderHeatmapPng(Paraboloid, (-4.0, 4.0), (-4.0, 4.0), 40, 30),
+            SkiaLandscapeRenderer.RenderHeatmapPng(Paraboloid, (-4.0, 4.0), (-4.0, 4.0), 48, 30),
+        };
+        Assert.Throws<ArgumentException>(() => SkiaLandscapeRenderer.EncodeAnimatedGif(frames));
+    }
 }

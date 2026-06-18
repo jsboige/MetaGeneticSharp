@@ -43,7 +43,7 @@ namespace MetaGeneticSharp;
 /// and the recovered <see cref="ImageExtensions.HsvToRgb"/>); only the SkiaSharp canvas plumbing is
 /// authored. Credit: jsboige @ d05826fd.</para>
 /// </summary>
-public static class SkiaLandscapeRenderer
+public static partial class SkiaLandscapeRenderer
 {
     /// <summary>
     /// Encodes an already-rendered <see cref="DirectBitmap"/> as a PNG byte array using SkiaSharp.
