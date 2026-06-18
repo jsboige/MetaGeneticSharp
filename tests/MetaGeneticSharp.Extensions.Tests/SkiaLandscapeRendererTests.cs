@@ -390,4 +390,59 @@ public class SkiaLandscapeRendererTests
         };
         Assert.Throws<ArgumentException>(() => SkiaLandscapeRenderer.EncodeAnimatedGif(frames));
     }
+
+    [TestCase(128)]
+    [TestCase(64)]
+    [TestCase(32)]
+    [TestCase(16)]
+    public void EncodeAnimatedGif_SmallPalette_RoundTripsThroughSkCodec(int maxColors)
+    {
+        // A non-256 palette derives a smaller GIF code size (minCodeSize = log2(maxColors)) and a
+        // smaller global color table. SKCodec must still decode every frame: this guards the
+        // GCT-size packed byte, the per-frame LZW minCodeSize, and the deferred code-size bump at
+        // the now-lower 2*maxColors boundary.
+        const int width = 60, height = 40, frameCount = 6;
+        List<byte[]> frames = RenderWalkingFrames(frameCount, width, height);
+
+        byte[] gif = SkiaLandscapeRenderer.EncodeAnimatedGif(frames, delayCentiseconds: 15, maxColors: maxColors);
+
+        using SKCodec codec = SKCodec.Create(new MemoryStream(gif))
+            ?? throw new AssertionException($"SKCodec could not decode the {maxColors}-color GIF.");
+        Assert.That(codec.FrameCount, Is.EqualTo(frameCount), "decoded frame count");
+        Assert.That(codec.Info.Width, Is.EqualTo(width));
+        Assert.That(codec.Info.Height, Is.EqualTo(height));
+    }
+
+    [Test]
+    public void EncodeAnimatedGif_FewerColors_ShrinkAGradient()
+    {
+        // The whole point of maxColors: banding a smooth gradient into fewer colors creates flat
+        // runs the LZW compresses, so a 32-color encode is materially smaller than a 256-color one.
+        const int width = 80, height = 60, frameCount = 8;
+        List<byte[]> frames = RenderWalkingFrames(frameCount, width, height);
+
+        byte[] big = SkiaLandscapeRenderer.EncodeAnimatedGif(frames, maxColors: 256);
+        byte[] small = SkiaLandscapeRenderer.EncodeAnimatedGif(frames, maxColors: 32);
+
+        Assert.That(small.Length, Is.LessThan(big.Length),
+            "a 32-color gradient GIF must be smaller than its 256-color counterpart");
+
+        // And the smaller one is still a valid, fully-decodable animation.
+        using SKCodec codec = SKCodec.Create(new MemoryStream(small))
+            ?? throw new AssertionException("SKCodec could not decode the 32-color GIF.");
+        Assert.That(codec.FrameCount, Is.EqualTo(frameCount));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(3)]
+    [TestCase(100)]
+    [TestCase(512)]
+    public void EncodeAnimatedGif_InvalidMaxColors_Throws(int maxColors)
+    {
+        // maxColors must be a power of two in [2, 256]; anything else is rejected up front.
+        List<byte[]> frames = RenderWalkingFrames(2, 40, 30);
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => SkiaLandscapeRenderer.EncodeAnimatedGif(frames, maxColors: maxColors));
+    }
 }

@@ -22,18 +22,25 @@ public static partial class SkiaLandscapeRenderer
     /// <summary>
     /// Assembles a list of equally-sized PNG frames into one looping animated GIF89a.
     /// All frames must share the same dimensions (use the same <c>width</c>/<c>height</c> when
-    /// rendering each generation). A single 256-color global palette is built by median-cut over
-    /// every frame, so the grayscale relief ramp and the saturated population/best markers all
-    /// survive quantization.
+    /// rendering each generation). A single global palette of up to <paramref name="maxColors"/>
+    /// entries is built by median-cut over every frame, so the grayscale relief ramp and the
+    /// saturated population/best markers all survive quantization.
     /// </summary>
     /// <param name="pngFrames">The per-frame PNG byte arrays, in playback order. Must be non-empty.</param>
     /// <param name="delayCentiseconds">Per-frame delay in 1/100 s (GIF unit). Default 25 = 0.25 s.</param>
     /// <param name="loopCount">Netscape loop count; 0 = loop forever (default).</param>
+    /// <param name="maxColors">
+    /// Size of the global palette; must be a power of two in [2, 256] (default 256). Smaller palettes
+    /// band a smooth gradient (e.g. a relief heatmap) into flat runs that the LZW actually compresses,
+    /// so 64 or 32 cut a gradient-heavy animation to a fraction of its 256-color size with little
+    /// visible loss. The GIF code size and global-color-table size are derived from this value.
+    /// </param>
     /// <returns>The bytes of a GIF89a animation.</returns>
     public static byte[] EncodeAnimatedGif(
         IReadOnlyList<byte[]> pngFrames,
         int delayCentiseconds = 25,
-        int loopCount = 0)
+        int loopCount = 0,
+        int maxColors = 256)
     {
         ArgumentNullException.ThrowIfNull(pngFrames);
         if (pngFrames.Count == 0)
@@ -47,6 +54,11 @@ public static partial class SkiaLandscapeRenderer
         if (loopCount < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(loopCount), "Loop count must be non-negative.");
+        }
+        if (maxColors < 2 || maxColors > 256 || (maxColors & (maxColors - 1)) != 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxColors), "maxColors must be a power of two between 2 and 256.");
         }
 
         // Decode every PNG to a flat RGB buffer; all frames must agree on dimensions.
@@ -84,8 +96,17 @@ public static partial class SkiaLandscapeRenderer
             rgbFrames.Add(rgb);
         }
 
-        // One shared 256-color global palette across all frames (median-cut).
-        (byte[] palette, int usedColors) = GifPalette.BuildGlobalPalette(rgbFrames, 256);
+        // Derive the GIF code size / GCT size from the requested palette size (power of two).
+        int gctBits = 0;
+        while ((1 << gctBits) < maxColors)
+        {
+            gctBits++;
+        }
+        // GIF requires a minimum LZW code size of 2 even for a 2-color table.
+        int minCodeSize = Math.Max(2, gctBits);
+
+        // One shared global palette across all frames (median-cut), capped at maxColors.
+        (byte[] palette, int usedColors) = GifPalette.BuildGlobalPalette(rgbFrames, maxColors);
 
         // Map each pixel to its nearest palette index, caching by packed RGB (frames share colors).
         var nearestCache = new Dictionary<int, byte>();
@@ -108,19 +129,19 @@ public static partial class SkiaLandscapeRenderer
         }
 
         using var ms = new MemoryStream();
-        WriteGifHeader(ms, width, height, palette);
+        WriteGifHeader(ms, width, height, palette, gctBits);
         WriteNetscapeLoop(ms, loopCount);
         foreach (byte[] idx in indexedFrames)
         {
             WriteGraphicControlExtension(ms, delayCentiseconds);
             WriteImageDescriptor(ms, width, height);
-            WriteLzwImageData(ms, idx, minCodeSize: 8);
+            WriteLzwImageData(ms, idx, minCodeSize);
         }
         ms.WriteByte(0x3B); // GIF trailer
         return ms.ToArray();
     }
 
-    private static void WriteGifHeader(Stream s, int width, int height, byte[] palette)
+    private static void WriteGifHeader(Stream s, int width, int height, byte[] palette, int gctBits)
     {
         // "GIF89a" signature + version.
         s.Write(new byte[] { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 }, 0, 6);
@@ -128,12 +149,14 @@ public static partial class SkiaLandscapeRenderer
         // Logical Screen Descriptor.
         WriteUInt16(s, (ushort)width);
         WriteUInt16(s, (ushort)height);
-        // Packed: global color table present (0x80) | color resolution (7<<4) | GCT size 7 => 2^(7+1)=256.
-        s.WriteByte(0x80 | 0x70 | 0x07);
+        // Packed: global color table present (0x80) | color resolution ((gctBits-1)<<4)
+        //         | GCT size (gctBits-1) => table holds 2^gctBits RGB triples.
+        int sizeField = gctBits - 1;
+        s.WriteByte((byte)(0x80 | (sizeField << 4) | sizeField));
         s.WriteByte(0x00); // background color index
         s.WriteByte(0x00); // pixel aspect ratio
-        // Global Color Table: 256 RGB triples.
-        s.Write(palette, 0, 256 * 3);
+        // Global Color Table: 2^gctBits RGB triples (palette is sized maxColors*3 = 2^gctBits*3).
+        s.Write(palette, 0, (1 << gctBits) * 3);
     }
 
     private static void WriteNetscapeLoop(Stream s, int loopCount)
@@ -179,11 +202,11 @@ public static partial class SkiaLandscapeRenderer
 
         const int maxCodeLimit = 4095; // giflib LZ_MAX_CODE: clear before a 13th-bit code is needed.
         const int maxBits = 12;        // giflib LZ_BITS.
-        int clearCode = 1 << minCodeSize;   // 256
-        int endCode = clearCode + 1;        // 257
-        int runningBits = minCodeSize + 1;  // 9
-        int maxCode1 = 1 << runningBits;    // 512
-        int runningCode = endCode + 1;      // 258
+        int clearCode = 1 << minCodeSize;   // e.g. 256 when minCodeSize == 8
+        int endCode = clearCode + 1;        // clearCode + 1
+        int runningBits = minCodeSize + 1;  // first code width
+        int maxCode1 = 1 << runningBits;    // ceiling at the current width
+        int runningCode = endCode + 1;      // first assignable dictionary code
 
         var dict = new Dictionary<int, int>();
         var bits = new BitPacker();
