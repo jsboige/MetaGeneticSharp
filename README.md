@@ -26,13 +26,29 @@ Metaheuristics address individuals by **stable index** across evolution stages, 
 
 GeneticSharp's operator catalog (selections, crossovers, mutations, terminations, randomization) is consumed as-is through its public interfaces.
 
+## Compound metaheuristics & de-bias tooling
+
+On top of the primitives, the library ships a catalog of **published algorithms reconstructed from them** — Whale Optimization (`WhaleOptimisationAlgorithm`), Equilibrium Optimizer, Differential Evolution, Bare-Bones PSO, Simulated Annealing, the Eukaryote multi-compartment model, and island models (`IslandMetaHeuristic`, `IslandCompoundMetaheuristic`). They all flow through `MetaHeuristicsService` / `KnownCompoundMetaheuristics` and share `GeometricCrossover` as their geometric trunk, keeping each algorithm inspectable rather than an opaque monolith ("components over metaphors", Sørensen 2015).
+
+The `MetaGeneticSharp.Extensions` assembly adds the **de-bias and benchmark tooling** that evaluates these compounds honestly — the two biases targeted by modern (CEC-style) benchmark suites:
+
+| Tool | Role |
+|------|------|
+| `KnownFunctions` | Canonical benchmark functions (Sphere, Rastrigin, Rosenbrock, Ackley, Schwefel, ...) |
+| `ShiftedFitness` | Compositional decorator that relocates the optimum off-center — defeats central-bias (the optimum-at-the-origin / start-at-zero bias) |
+| `RotatedFitness` + `RotationMatrices` | Compositional decorator that rotates coordinates by an orthogonal matrix `M` (`RotationMatrices.Seeded` = reproducible product of Givens rotations) — defeats axis-alignment bias |
+| `CenterBiasBenchmark` | Centered-vs-displaced protocol (Kudela 2022): measures the central-bias signature Δ |
+| `LandscapeRenderer` / `KnownFunctionLandscape` | Heatmap rendering of the fitness surface, with convergence overlays and heightmap landscapes |
+
+`ShiftedFitness` and `RotatedFitness` are thin compositional decorators: they reuse the canonical function math unchanged (never reimplementing it) and compose for the full CEC shifted-then-rotated variant — `new RotatedFitness(new ShiftedFitness(inner, offset), M)`.
+
 ## Structure
 
 ```
 MetaGeneticSharp/
   src/
     MetaGeneticSharp.Domain/          # Core metaheuristic engine + primitives
-    MetaGeneticSharp.Extensions/      # TSP, Sudoku, benchmark functions
+    MetaGeneticSharp.Extensions/      # De-bias decorators (Shifted/Rotated Fitness), CenterBiasBenchmark, KnownFunctions, landscape rendering
     MetaGeneticSharp.Infrastructure/  # Utility framework
   tests/
   notebooks/                          # .NET Interactive pedagogical notebooks
