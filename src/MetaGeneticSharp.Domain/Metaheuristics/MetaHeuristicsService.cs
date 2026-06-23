@@ -142,6 +142,14 @@ namespace MetaGeneticSharp
                                     NoMutation = noMutation
                                 };
                                 return fbi.Build();
+                            case KnownCompoundMetaheuristics.DifferentialEvolution:
+                                var de = new DifferentialEvolution()
+                                {
+                                    MaxGenerations = maxGenerations,
+                                    GeometricConverter = geometricConverter,
+                                    NoMutation = noMutation
+                                };
+                                return de.Build();
                             case KnownCompoundMetaheuristics.Islands5Default:
                             case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:
                             case KnownCompoundMetaheuristics.Islands5BestMixture:
@@ -220,6 +228,7 @@ namespace MetaGeneticSharp
                     case KnownCompoundMetaheuristics.ForensicBasedInvestigation:
                         return typeof(GenerationMetaHeuristic);
                     case KnownCompoundMetaheuristics.EquilibriumOptimizer:
+                    case KnownCompoundMetaheuristics.DifferentialEvolution:
                         return typeof(MatchMetaHeuristic);
                     case KnownCompoundMetaheuristics.Islands5Default:
                     case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:

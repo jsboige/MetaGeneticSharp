@@ -20,7 +20,7 @@ public class MetaHeuristicsServiceTests
     {
         var names = MetaHeuristicsService.GetMetaHeuristicNames();
 
-        Assert.That(names, Has.Count.EqualTo(11));
+        Assert.That(names, Has.Count.EqualTo(12));
         Assert.That(names, Contains.Item("None"));
         Assert.That(names, Contains.Item("Default"));
         Assert.That(names, Contains.Item("DefaultRandomHyperspeed"));
@@ -28,6 +28,7 @@ public class MetaHeuristicsServiceTests
         Assert.That(names, Contains.Item("WhaleOptimisationNaive"));
         Assert.That(names, Contains.Item("EquilibriumOptimizer"));
         Assert.That(names, Contains.Item("ForensicBasedInvestigation"));
+        Assert.That(names, Contains.Item("DifferentialEvolution"));
         Assert.That(names, Contains.Item("Islands5Default"));
         Assert.That(names, Contains.Item("Islands5DefaultNoMigration"));
         Assert.That(names, Contains.Item("Islands5BestMixture"));

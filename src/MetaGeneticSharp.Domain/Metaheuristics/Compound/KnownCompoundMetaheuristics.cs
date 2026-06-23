@@ -17,6 +17,7 @@ namespace MetaGeneticSharp
         WhaleOptimisationNaive,
         EquilibriumOptimizer,
         ForensicBasedInvestigation,
+        DifferentialEvolution,
         Islands5Default,
         Islands5DefaultNoMigration,
         Islands5BestMixture,
