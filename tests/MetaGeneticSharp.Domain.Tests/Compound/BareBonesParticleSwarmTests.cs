@@ -98,8 +98,12 @@ public class BareBonesParticleSwarmTests
             sum += (double)BareBonesParticleSwarm.DefaultSampleOperator(0, geneValues, new IdentityConverter());
 
         double mean = sum / N;
-        // The Gaussian is N(10, 10); over 20k draws the sample mean is within ~0.2 of 10.0 (3 sigma).
-        Assert.That(mean, Is.EqualTo(10.0).Within(0.25),
+        // The Gaussian is N(10, 10); the operator draws from RandomizationProvider.Current
+        // (FastRandomRandomization, unseeded -- BasicRandomization.ResetSeed does not control it), so the
+        // sample mean over 20k draws has stddev ~0.07. A 7-sigma band is bulletproof against the run-to-run
+        // variance while still catching a swapped [anchor, best] indexing (which would land the mean near 0
+        // or 20, dozens of sigmas away).
+        Assert.That(mean, Is.EqualTo(10.0).Within(0.5),
             $"BBPSO draw should be centred at the midpoint (0+20)/2 = 10.0; got sample mean {mean}");
     }
 
