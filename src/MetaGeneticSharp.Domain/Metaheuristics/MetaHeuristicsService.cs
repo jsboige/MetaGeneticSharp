@@ -150,6 +150,14 @@ namespace MetaGeneticSharp
                                     NoMutation = noMutation
                                 };
                                 return de.Build();
+                            case KnownCompoundMetaheuristics.BareBonesParticleSwarm:
+                                var bbpso = new BareBonesParticleSwarm()
+                                {
+                                    MaxGenerations = maxGenerations,
+                                    GeometricConverter = geometricConverter,
+                                    NoMutation = noMutation
+                                };
+                                return bbpso.Build();
                             case KnownCompoundMetaheuristics.Islands5Default:
                             case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:
                             case KnownCompoundMetaheuristics.Islands5BestMixture:
@@ -229,6 +237,7 @@ namespace MetaGeneticSharp
                         return typeof(GenerationMetaHeuristic);
                     case KnownCompoundMetaheuristics.EquilibriumOptimizer:
                     case KnownCompoundMetaheuristics.DifferentialEvolution:
+                    case KnownCompoundMetaheuristics.BareBonesParticleSwarm:
                         return typeof(MatchMetaHeuristic);
                     case KnownCompoundMetaheuristics.Islands5Default:
                     case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:
