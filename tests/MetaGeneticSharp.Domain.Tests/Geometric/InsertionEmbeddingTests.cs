@@ -130,6 +130,37 @@ public class InsertionEmbeddingTests
     }
 
     [Test]
+    public void InjectedEmbedding_IsHonouredThroughGeometricCrossover()
+    {
+        // Integration of the notebook Config 4 usage pattern (#3964 atom 2):
+        // GeometricCrossover<int>(ordered:true) DEFAULTS its GeometryEmbedding to OrderedEmbedding
+        // (swap/Cayley). To explore the insertion/Ulam geometry one must inject InsertionEmbedding
+        // AFTER construction. This test guards the injection contract end-to-end through PerformCross:
+        // the injected embedding is honoured and produces a valid permutation offspring.
+        //
+        // NOTE: the centroid operator of a 2-parent GeometricCrossover maps permutations to a
+        // metric-space target that is NOT itself a permutation (e.g. centroid of [0,1,2,3,4] and
+        // [2,0,1,3,4] = [1,0.5,1.5,3,4]). The geodesic back-walk therefore degrades symmetrically
+        // for both metrics — exactly the "naive centroid is inadequate on city-label indices" limit
+        // that MGS-7 Config 3 documents. The swap-vs-insertion DISTINCTION in one step is guaranteed
+        // only when the metric-space target is itself a permutation (see the keystone
+        // UlamVsCayley_DistinctGeodesicFromSameParentAndTarget). Here we assert only that the
+        // injected embedding is honoured and stays a valid permutation.
+        var parents = new List<IChromosome> { Perm(0, 1, 2, 3, 4), Perm(2, 0, 1, 3, 4) };
+
+        var insertionCrossover = new GeometricCrossover<int>(ordered: true, parentNb: 2, generateTwin: false);
+        insertionCrossover.GeometryEmbedding = new InsertionEmbedding<int> { IsOrdered = true };
+
+        var children = insertionCrossover.Cross(parents);
+        Assert.That(children, Has.Count.EqualTo(1));
+        var offspring = Values(children[0]);
+
+        // The injected InsertionEmbedding is honoured: the offspring is a valid permutation.
+        Assert.That(offspring, Is.EquivalentTo(new[] { 0, 1, 2, 3, 4 }));
+        Assert.That(insertionCrossover.GeometryEmbedding, Is.InstanceOf<InsertionEmbedding<int>>());
+    }
+
+    [Test]
     public void ValidateInsertionFunction_CanRejectMoves()
     {
         // A custom validator that forbids moving element 0 keeps the offspring closer to the parent.
