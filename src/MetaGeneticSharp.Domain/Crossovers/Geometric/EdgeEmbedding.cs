@@ -33,13 +33,16 @@ namespace MetaGeneticSharp
     /// (EAX): the known-good TSP crossovers, reconstructed here from the swappable-embedding primitive.
     /// </para>
     /// <para>
-    /// Honest caveat (G.9). The common edges of two Hamiltonian cycles cannot themselves form a cycle
-    /// (every city has degree exactly 2 in a valid tour, so a common sub-cycle would force the two parents
-    /// to coincide on it — a degenerate case). They therefore form a set of disjoint PATHS plus isolated
-    /// vertices, which can ALWAYS be stitched back into a full Hamiltonian cycle while preserving every
-    /// common edge. The edges used to STITCH the path-blocks together are not guaranteed to belong to
-    /// either parent — they are heuristic completion edges. The offspring is on the geodesic w.r.t. its
-    /// common-edge core, not provably so w.r.t. the completion. See MGS-7 (Config 5).
+    /// Honest caveat (G.9). The common-edge graph has degree at most 2 (every city has degree exactly 2 in
+    /// a valid tour). A PROPER sub-cycle among the common edges is impossible: it would trap its vertices,
+    /// forcing both parents to coincide on it — contradicting that a Hamiltonian cycle has no proper
+    /// sub-cycle. So the common edges are either a disjoint union of PATHS plus isolated vertices, OR (the
+    /// single degenerate case of identical parents) the full Hamiltonian cycle itself. Both are handled by
+    /// the path-trace, which stops when no unvisited neighbour remains: paths stitch into a cycle, a full
+    /// cycle traces out as the parent. Either way the offspring can be reassembled preserving every common
+    /// edge. The edges used to STITCH the path-blocks together are not guaranteed to belong to either
+    /// parent — they are heuristic completion edges. The offspring is on the geodesic w.r.t. its common-edge
+    /// core, not provably so w.r.t. the completion. See MGS-7 (Config 5).
     /// </para>
     /// </remarks>
     public class EdgeEmbedding<TValue> : IdentityEmbedding<TValue>
@@ -142,10 +145,13 @@ namespace MetaGeneticSharp
             return pairs;
         }
 
-        // The common-edge graph has degree <= 2 and is acyclic, so it is a disjoint union of paths and
-        // isolated vertices. We trace each maximal path from its smaller endpoint (deterministic), then
-        // stitch the blocks in order of their smallest vertex into one permutation. Internal block edges
-        // (the common edges) are preserved exactly; the stitches are heuristic completion edges.
+        // The common-edge graph has degree <= 2. A proper sub-cycle is impossible (it would trap its
+        // vertices), so it is a disjoint union of paths plus isolated vertices — unless the parents are
+        // identical, in which case it is the full Hamiltonian cycle. We trace each maximal path from its
+        // smaller endpoint (deterministic); the trace stops when no unvisited neighbour remains, so a
+        // full cycle traces out as the parent. We then stitch the blocks in order of their smallest vertex
+        // into one permutation. Internal block edges (the common edges) are preserved exactly; the stitches
+        // are heuristic completion edges.
         private static int[] StitchPathBlocks(HashSet<int>[] adjacency, int n)
         {
             var visited = new bool[n];

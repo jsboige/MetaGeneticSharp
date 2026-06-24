@@ -157,4 +157,64 @@ public class EdgeEmbeddingTests
         common.IntersectWith(TourEdges(new[] { 0, 2, 1, 3, 4 }));
         Assert.That(TourEdges(offspring), Is.SupersetOf(common));
     }
+
+    [Test]
+    public void IdenticalParents_OffspringIsTheParent()
+    {
+        // EDGE CASE: identical parents => the common-edge graph is the FULL Hamiltonian cycle (degree 2
+        // everywhere — the only case where common edges form a cycle). The path-trace must visit every
+        // city and stop (no unvisited neighbour), yielding the parent unchanged, with all edges preserved.
+        var embedding = new EdgeEmbedding<int>();
+        var parent = Perm(0, 1, 2, 3, 4);
+
+        var vectors = embedding.MapToGeometry(new List<IChromosome> { parent, Perm(0, 1, 2, 3, 4) });
+        // Identical parents => identical indicator vectors => centroid = the parent's own edges.
+        var centroid = vectors[0].Select(v => (int)v).ToArray();
+
+        var offspring = embedding.MapFromGeometry(
+            new List<IChromosome> { parent, Perm(0, 1, 2, 3, 4) }, centroid);
+
+        // Valid permutation, equal to the parent, preserving all its edges.
+        Assert.That(Values(offspring), Is.EquivalentTo(new[] { 0, 1, 2, 3, 4 }));
+        Assert.That(TourEdges(Values(offspring)), Is.EquivalentTo(TourEdges(new[] { 0, 1, 2, 3, 4 })));
+    }
+
+    [Test]
+    public void MinimalTours_TwoAndThreeCities_ProduceValidPermutations()
+    {
+        // EDGE CASE: the smallest tours. n=2 has a single edge {0,1}; n=3 has the triangle (every tour
+        // is the same 3 edges up to direction). The offspring must remain a valid permutation preserving
+        // the common edges in both cases.
+        var embedding = new EdgeEmbedding<int>();
+
+        // n=2: parents [0,1] and [1,0] are the same tour (cyclic). Single edge {0,1} is common.
+        var p2a = Perm(0, 1);
+        var v2 = embedding.MapToGeometry(new List<IChromosome> { p2a, Perm(1, 0) });
+        var off2 = Values(embedding.MapFromGeometry(
+            new List<IChromosome> { p2a, Perm(1, 0) }, v2[0].Select(x => (int)x).ToArray()));
+        Assert.That(off2, Is.EquivalentTo(new[] { 0, 1 }));
+
+        // n=3: [0,1,2] and [0,2,1] are the same triangle (same 3 edges). All edges common.
+        var p3a = Perm(0, 1, 2);
+        var v3 = embedding.MapToGeometry(new List<IChromosome> { p3a, Perm(0, 2, 1) });
+        var off3 = Values(embedding.MapFromGeometry(
+            new List<IChromosome> { p3a, Perm(0, 2, 1) }, v3[0].Select(x => (int)x).ToArray()));
+        Assert.That(off3, Is.EquivalentTo(new[] { 0, 1, 2 }));
+    }
+
+    [Test]
+    public void ReversedTour_HasZeroEdgeDistance()
+    {
+        // DISTINGUISHING PROPERTY of the edge metric: a reversed tour shares EVERY edge with the
+        // original (the cyclic tour's edges are undirected), so the edge metric sees it as IDENTICAL
+        // (distance 0) — unlike swap/Cayley (a reversal costs n/2 swaps) and insertion/Ulam. This is
+        // the geometric reason the edge metric is the natural one for the TSP: tour direction does not
+        // matter, only the set of edges.
+        var embedding = new EdgeEmbedding<int>();
+        var parents = new List<IChromosome> { Perm(0, 1, 2, 3, 4), Perm(4, 3, 2, 1, 0) };
+
+        var vectors = embedding.MapToGeometry(parents);
+        // The two indicator vectors are EQUAL => the centroid equals each => the offspring is the tour.
+        Assert.That(vectors[1], Is.EqualTo(vectors[0]));
+    }
 }
