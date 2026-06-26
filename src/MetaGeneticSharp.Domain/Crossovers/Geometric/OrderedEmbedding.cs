@@ -11,6 +11,19 @@ namespace MetaGeneticSharp
     /// swap-preserving conversion for ordered ones (permutations). Ported from
     /// GeneticSharp.Domain.Crossovers.Geometric (PR giacomelli/GeneticSharp#87).
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Honest caveat (G.9). The 2-parent centroid operator of <see cref="GeometricCrossover{TValue}"/>
+    /// maps permutations to a metric-space target that is NOT itself a permutation (e.g. the gene-wise
+    /// mean of [0,1,2,3,4] and [2,0,1,3,4] is [1,0.5,1.5,3,4]). The back-walk interprets that target as
+    /// a desired ranking and swaps toward it, so the swap-metric DISTINCTION is guaranteed in one step
+    /// only when the metric-space target is itself a permutation (passed directly to
+    /// <see cref="MapFromGeometry"/>); under a naive centroid it degrades symmetrically across the
+    /// positional embeddings — the same "naive centroid is inadequate on city-label indices" limit
+    /// documented in MGS-7. See <see cref="InsertionEmbedding{TValue}"/> and
+    /// <see cref="KendallTauEmbedding{TValue}"/> for the sibling metrics with the identical limit.
+    /// </para>
+    /// </remarks>
     public class OrderedEmbedding<TValue> : IdentityEmbedding<TValue>
     {
         private Func<IChromosome, int, int, bool> _validateSwapFunction;
