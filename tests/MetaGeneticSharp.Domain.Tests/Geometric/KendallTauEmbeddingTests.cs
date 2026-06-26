@@ -148,4 +148,53 @@ public class KendallTauEmbeddingTests
         Assert.That(offspring, Is.EquivalentTo(new[] { 0, 1, 2, 3, 4 }));
         Assert.That(adjacentCrossover.GeometryEmbedding, Is.InstanceOf<KendallTauEmbedding<int>>());
     }
+
+    [Test]
+    public void TargetEqualsParent_NoAcceptedSwap_OffspringIsParent()
+    {
+        // EDGE CASE: when the metric-space target equals the parent permutation, every adjacent
+        // pair is already in target-rank order, so NO swap is accepted and the bubble-sort walk is
+        // a no-op. The offspring is the parent unchanged — the geometric-crossover contract that an
+        // offspring walked toward an already-reached target stays put (parity with
+        // EdgeEmbedding.IdenticalParents_OffspringIsTheParent).
+        var embedding = new KendallTauEmbedding<int>
+        {
+            IsOrdered = true,
+            GeneSelectionMode = GeneSelectionMode.SingleFirstAllowed,
+        };
+        var parent = Perm(0, 1, 2, 3, 4);
+
+        var offspring = embedding.MapFromGeometry(
+            new List<IChromosome> { parent },
+            new[] { 0, 1, 2, 3, 4 });
+
+        Assert.That(Values(offspring), Is.EqualTo(new[] { 0, 1, 2, 3, 4 }));
+    }
+
+    [Test]
+    public void MinimalLengthTwo_SingleAdjacentSwapReachesReversedTarget()
+    {
+        // BOUNDARY: at the minimum supported chromosome length (ChromosomeBase rejects length < 2),
+        // a single adjacent swap is the only available move and is also a full reversal — one
+        // Kendall-Tau step reaches the target. Both SingleFirstAllowed (one swap, return) and
+        // AllIndexed (the sole swap, then a no-op second pass) converge to the reversed target.
+        var parent = Perm(0, 1);
+        var target = new[] { 1, 0 };
+
+        var singleFirst = new KendallTauEmbedding<int>
+        {
+            IsOrdered = true,
+            GeneSelectionMode = GeneSelectionMode.SingleFirstAllowed,
+        };
+        var allIndexed = new KendallTauEmbedding<int>
+        {
+            IsOrdered = true,
+            GeneSelectionMode = GeneSelectionMode.AllIndexed,
+        };
+
+        Assert.That(Values(singleFirst.MapFromGeometry(
+            new List<IChromosome> { parent }, target)), Is.EqualTo(new[] { 1, 0 }));
+        Assert.That(Values(allIndexed.MapFromGeometry(
+            new List<IChromosome> { parent }, target)), Is.EqualTo(new[] { 1, 0 }));
+    }
 }
