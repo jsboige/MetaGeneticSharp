@@ -46,21 +46,24 @@ The `MetaGeneticSharp.Extensions` assembly adds the **de-bias and benchmark tool
 
 The compounds above share a single geometric trunk, `GeometricCrossover<TValue>`, which realizes Moraglio's geometric-crossover theory (Moraglio 2007, see References): a crossover is *geometric* when its offspring lies on the geodesic segment between the parents under a chosen metric. The geometry is **not** baked into the motor — it is carried by a swappable `IGeometryEmbedding<TValue>`, so the same `GeometricCrossover` plus centroid operator explores a different landscape when the embedding changes.
 
-For permutations the library ships two embeddings (both subclassing the `IdentityEmbedding<TValue>` pass-through base), each realizing a distinct natural metric:
+For permutations the library ships three positional embeddings (all subclassing the `IdentityEmbedding<TValue>` pass-through base), each realizing a distinct natural metric:
 
 | Embedding | Metric | Single-step walk |
 |-----------|--------|------------------|
 | `OrderedEmbedding<TValue>` | Swap / Cayley (how many transpositions separate two orders) | `FlipGene` — transposition of two positions |
 | `InsertionEmbedding<TValue>` | Insertion / Ulam (how many elements to relocate, shifting the others) | `InsertAt` — extract + shift the segment + reinsert |
+| `KendallTauEmbedding<TValue>` | Adjacent transposition / Kendall-Tau (how many neighbouring swaps, i.e. inversions, separate two orders) | adjacent swap — bubble-sort one inverted pair |
 
-`GeometricCrossover<TValue>(ordered: true)` defaults its `GeometryEmbedding` to `OrderedEmbedding` (swap/Cayley). To explore the insertion/Ulam geometry, inject the embedding explicitly after construction:
+`GeometricCrossover<TValue>(ordered: true)` defaults its `GeometryEmbedding` to `OrderedEmbedding` (swap/Cayley). To explore the insertion/Ulam or Kendall-Tau geometry, inject the embedding explicitly after construction:
 
 ```csharp
 var geo = new GeometricCrossover<int>(ordered: true);
 geo.GeometryEmbedding = new InsertionEmbedding<int> { IsOrdered = true };
+// or, for the adjacent-transposition / bubble-sort metric:
+geo.GeometryEmbedding = new KendallTauEmbedding<int> { IsOrdered = true };
 ```
 
-Because two distinct metrics define two distinct metric spaces, they define two distinct geodesic segments between the same parents — hence **distinct offspring reachable in a single crossover step**. From parent `[0,1,2,3,4]` toward the permutation target `[2,0,1,3,4]`: one swap step yields `[2,1,0,3,4]`, one insertion step yields `[2,0,1,3,4]`. The metric — not the motor — carries the geometry. (Caveat: the 2-parent centroid operator maps permutations to a metric target that is not itself a permutation, so the swap-vs-insertion distinction under the centroid is bounded symmetrically; the one-step distinction is cleanest against a permutation target, as exercised in the MGS-7 notebook.)
+Because distinct metrics define distinct metric spaces, they define distinct geodesic segments between the same parents — hence **distinct offspring reachable in a single crossover step**. From parent `[0,1,2,3,4]` toward the permutation target `[2,0,1,3,4]`: one swap step yields `[2,1,0,3,4]`, one insertion step yields `[2,0,1,3,4]`, one adjacent-transposition step yields `[0,2,1,3,4]`. The metric — not the motor — carries the geometry. (Caveat: the 2-parent centroid operator maps permutations to a metric target that is not itself a permutation, so the metric distinction under the centroid is bounded symmetrically; the one-step distinction is cleanest against a permutation target, as exercised in the MGS-7 notebook.)
 
 ## Structure
 
