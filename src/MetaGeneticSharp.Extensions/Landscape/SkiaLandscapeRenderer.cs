@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using GeneticSharp;
 using GeneticSharp.Extensions.Mathematic.Functions;
 using GeneticSharp.Infrastructure.Framework.Images;
 using SkiaSharp;
@@ -234,6 +235,51 @@ public static partial class SkiaLandscapeRenderer
         ArgumentNullException.ThrowIfNull(function);
         IList<(double min, double max)> ranges = function.Ranges(2);
         return RenderHeatmapPng(function.Function, ranges[0], ranges[1], width, height, population, best);
+    }
+
+    /// <summary>
+    /// Renders an N-D benchmark fitness projected down to 2D via the MAX-of-uniform-samples
+    /// pattern (see <see cref="NDMaxProjectionAdapter"/>), GDI-free. Convenience overload that
+    /// exposes the N-D projection capability on the public renderer surface — where a notebook
+    /// author looks for it — while keeping <see cref="NDMaxProjectionAdapter"/> internal sealed.
+    /// Mirrors <see cref="KnownFunctionLandscape.RenderHeatmap(IFitness, int, int, Random?, int, int)"/>,
+    /// producing a PNG byte[] instead of a <see cref="LandscapeHeatmap"/>.
+    /// </summary>
+    /// <param name="function">A benchmark <see cref="IFitness"/> whose <see cref="KnownFunctionGenes"/>
+    /// consumes exactly <paramref name="dimension"/> genes (e.g. Schwefel, Ackley in dim &gt;= 5).</param>
+    /// <param name="dimension">Total dimension of the fitness (&gt;= 2); <paramref name="dimension"/> - 2
+    /// hidden coordinates are MAX-sampled per pixel over the recommended search box.</param>
+    /// <param name="nbSamples">Uniform samples per pixel for the MAX projection (default 10, verbatim
+    /// from the Gtk# controller <c>LandscapeExplorerSampleController</c> @ d05826fd). Increase to reduce
+    /// projection noise on rougher landscapes; 1 collapses to a single sample.</param>
+    /// <param name="rng">Seedable <see cref="Random"/> for reproducible heatmaps; pass null for a
+    /// fresh time-based seed.</param>
+    /// <param name="width">Heatmap canvas width in pixels (&gt;= 2).</param>
+    /// <param name="height">Heatmap canvas height in pixels (&gt;= 2).</param>
+    /// <param name="population">Optional population points to overlay (same coordinate convention as
+    /// the 2D overload).</param>
+    /// <param name="best">Optional best-individual coordinate to mark.</param>
+    public static byte[] RenderHeatmapPng(
+        IFitness function,
+        int dimension,
+        int nbSamples = 10,
+        Random? rng = null,
+        int width = 400,
+        int height = 300,
+        IEnumerable<double[]>? population = null,
+        double[]? best = null)
+    {
+        ArgumentNullException.ThrowIfNull(function);
+        (double min, double max) = KnownFunctionsBounds.For(function.GetType());
+        var adapter = new NDMaxProjectionAdapter(function, (min, max), dimension, nbSamples, rng ?? new Random());
+        return RenderHeatmapPng(
+            point => adapter.Evaluate(point[0], point[1]),
+            (min, max),
+            (min, max),
+            width,
+            height,
+            population,
+            best);
     }
 
     private static byte[] EncodePng(SKBitmap skBitmap)
