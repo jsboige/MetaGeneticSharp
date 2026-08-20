@@ -20,6 +20,7 @@ namespace MetaGeneticSharp
         ForensicBasedInvestigation,
         DifferentialEvolution,
         BareBonesParticleSwarm,
+        ParticleSwarmOptimization,
         SimulatedAnnealing,
         Islands5Default,
         Islands5DefaultNoMigration,
