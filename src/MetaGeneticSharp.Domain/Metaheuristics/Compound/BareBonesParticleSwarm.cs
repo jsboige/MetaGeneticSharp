@@ -37,6 +37,10 @@ namespace MetaGeneticSharp
     /// honest consequence of the framework's stateless contract, documented rather than hidden: the
     /// algorithm is still a recognised bare-bones PSO (the gbest-only / current-anchored family),
     /// and retains BBPSO's defining property -- sampling, not stepping, toward the best.
+    /// (The evolution-context store <see cref="IEvolutionContext.GetOrAdd{TItemType}"/> can in fact
+    /// carry per-particle state across generations, so the canonical velocity recurrence IS
+    /// expressible -- see <see cref="ParticleSwarmOptimization"/>; this bare-bones variant keeps the
+    /// current-anchored sampling by design.)
     /// </para>
     /// <para>
     /// <b>Freeze at the global best.</b> When a particle IS the global best, anchor == gbest, so
