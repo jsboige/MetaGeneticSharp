@@ -174,6 +174,14 @@ namespace MetaGeneticSharp
                                     NoMutation = noMutation
                                 };
                                 return sa.Build();
+                            case KnownCompoundMetaheuristics.ScatterSearch:
+                                var ss = new ScatterSearch()
+                                {
+                                    MaxGenerations = maxGenerations,
+                                    GeometricConverter = geometricConverter,
+                                    NoMutation = noMutation
+                                };
+                                return ss.Build();
                             case KnownCompoundMetaheuristics.Islands5Default:
                             case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:
                             case KnownCompoundMetaheuristics.Islands5BestMixture:
@@ -256,6 +264,7 @@ namespace MetaGeneticSharp
                     case KnownCompoundMetaheuristics.BareBonesParticleSwarm:
                     case KnownCompoundMetaheuristics.ParticleSwarmOptimization:
                     case KnownCompoundMetaheuristics.SimulatedAnnealing:
+                    case KnownCompoundMetaheuristics.ScatterSearch:
                         return typeof(MatchMetaHeuristic);
                     case KnownCompoundMetaheuristics.Islands5Default:
                     case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:

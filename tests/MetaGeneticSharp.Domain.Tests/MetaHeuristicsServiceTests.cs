@@ -20,7 +20,7 @@ public class MetaHeuristicsServiceTests
     {
         var names = MetaHeuristicsService.GetMetaHeuristicNames();
 
-        Assert.That(names, Has.Count.EqualTo(15));
+        Assert.That(names, Has.Count.EqualTo(16));
         Assert.That(names, Contains.Item("None"));
         Assert.That(names, Contains.Item("Default"));
         Assert.That(names, Contains.Item("DefaultRandomHyperspeed"));
@@ -32,6 +32,7 @@ public class MetaHeuristicsServiceTests
         Assert.That(names, Contains.Item("BareBonesParticleSwarm"));
         Assert.That(names, Contains.Item("ParticleSwarmOptimization"));
         Assert.That(names, Contains.Item("SimulatedAnnealing"));
+        Assert.That(names, Contains.Item("ScatterSearch"));
         Assert.That(names, Contains.Item("Islands5Default"));
         Assert.That(names, Contains.Item("Islands5DefaultNoMigration"));
         Assert.That(names, Contains.Item("Islands5BestMixture"));
@@ -68,6 +69,7 @@ public class MetaHeuristicsServiceTests
     [TestCase("BareBonesParticleSwarm", typeof(MatchMetaHeuristic))]
     [TestCase("ParticleSwarmOptimization", typeof(MatchMetaHeuristic))]
     [TestCase("SimulatedAnnealing", typeof(MatchMetaHeuristic))]
+    [TestCase("ScatterSearch", typeof(MatchMetaHeuristic))]
     public void CreateMetaHeuristicByName_BuildsInstanceWithDeclaredRootType(
         string name, Type expectedRootType)
     {
@@ -91,6 +93,7 @@ public class MetaHeuristicsServiceTests
     [TestCase("BareBonesParticleSwarm", typeof(MatchMetaHeuristic))]
     [TestCase("ParticleSwarmOptimization", typeof(MatchMetaHeuristic))]
     [TestCase("SimulatedAnnealing", typeof(MatchMetaHeuristic))]
+    [TestCase("ScatterSearch", typeof(MatchMetaHeuristic))]
     public void GetMetaHeuristicTypeByName_MatchesDeclaredRootType(string name, Type expected)
     {
         Assert.That(MetaHeuristicsService.GetMetaHeuristicTypeByName(name), Is.SameAs(expected));
