@@ -22,6 +22,7 @@ namespace MetaGeneticSharp
         BareBonesParticleSwarm,
         ParticleSwarmOptimization,
         SimulatedAnnealing,
+        ScatterSearch,
         Islands5Default,
         Islands5DefaultNoMigration,
         Islands5BestMixture,
