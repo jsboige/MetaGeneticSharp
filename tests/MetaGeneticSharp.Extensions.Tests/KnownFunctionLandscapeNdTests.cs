@@ -105,14 +105,15 @@ public class KnownFunctionLandscapeNdTests
     }
 
     [Test]
-    public void RenderHeatmap_NdProjection_SeededRng_ProducesSimilarExtremaCount()
+    public void RenderHeatmap_NdProjection_SeededRng_ProducesIdenticalHeatmaps()
     {
-        // The MAX projection uses a seeded RNG to sample hidden coords. The PIXEL values differ
-        // across runs because LandscapeRenderer.RenderHeatmap uses Parallel.For (rows out of
-        // order), so the RNG is consumed in different orders. We instead assert a coarse-grain
-        // stability: the COUNT of pixels near the extrema (Black max-marker, White min-marker)
-        // is small and similar across runs, because those extrema are dominated by a small
-        // number of probe points.
+        // The MAX projection derives a per-pixel RNG seed (NDMaxProjectionAdapter.PixelSeed)
+        // from the caller-seeded base plus the exact (x, y) bits, so hidden-coordinate
+        // sampling no longer depends on the Parallel.For row scheduling of
+        // LandscapeRenderer.RenderHeatmap. Two renders with the same seed must now be
+        // pixel-for-pixel identical — the coarse-grain extrema-count workaround this test
+        // used before the fix (measured drift: pixel (0,0) R=53 vs R=119, mean R 157,96
+        // vs 30,63 across two new Random(2026) runs on MGS-7b) is retired.
         var rng1 = new Random(2026);
         var rng2 = new Random(2026);
 
@@ -121,23 +122,13 @@ public class KnownFunctionLandscapeNdTests
         using LandscapeHeatmap h2 = KnownFunctionLandscape.RenderHeatmap(
             new SphereFitness(), dimension: 4, nbSamples: 20, rng: rng2, width: 40, height: 40);
 
-        int blacks1 = 0, blacks2 = 0;
-        int whites1 = 0, whites2 = 0;
         for (int x = 0; x < 40; x++)
         for (int y = 0; y < 40; y++)
         {
-            Color c1 = h1.Bitmap.GetPixel(x, y);
-            Color c2 = h2.Bitmap.GetPixel(x, y);
-            if (c1.ToArgb() == Color.Black.ToArgb()) blacks1++;
-            if (c2.ToArgb() == Color.Black.ToArgb()) blacks2++;
-            if (c1.ToArgb() == Color.White.ToArgb()) whites1++;
-            if (c2.ToArgb() == Color.White.ToArgb()) whites2++;
+            Assert.That(h1.Bitmap.GetPixel(x, y).ToArgb(),
+                Is.EqualTo(h2.Bitmap.GetPixel(x, y).ToArgb()),
+                $"seeded renders diverge at pixel ({x}, {y}) — per-pixel seeding broken.");
         }
-
-        Assert.That(blacks1, Is.EqualTo(blacks2),
-            $"Black-marker count must match across seeded runs (got {blacks1} vs {blacks2}).");
-        Assert.That(whites1, Is.EqualTo(whites2),
-            $"White-marker count must match across seeded runs (got {whites1} vs {whites2}).");
     }
 
     [Test]
