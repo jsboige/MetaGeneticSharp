@@ -243,6 +243,73 @@ public class ParticleSwarmOptimizationTests
     }
 
     /// <summary>
+    /// The factory default must preserve mutation for canonical PSO. Its attractor-scaled velocity
+    /// clamp intentionally reaches zero when x == pbest == gbest; on a quantised objective that can
+    /// happen before the optimum, so disabling the caller-provided mutation makes the plateau
+    /// absorbing. Other compounds keep the historical no-mutation default.
+    /// </summary>
+    [Test]
+    public void MetaHeuristicsService_DefaultParticleSwarm_PreservesMutationOnlyForPso()
+    {
+        var pso = MetaHeuristicsService.CreateMetaHeuristicByName(
+            nameof(KnownCompoundMetaheuristics.ParticleSwarmOptimization));
+        var de = MetaHeuristicsService.CreateMetaHeuristicByName(
+            nameof(KnownCompoundMetaheuristics.DifferentialEvolution));
+        var psoOptOut = MetaHeuristicsService.CreateMetaHeuristicByName(
+            nameof(KnownCompoundMetaheuristics.ParticleSwarmOptimization), noMutation: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(HasNoMutationLayer(pso), Is.False,
+                "PSO needs bounded diversification after its velocity span collapses");
+            Assert.That(HasNoMutationLayer(de), Is.True,
+                "the PSO correction must not alter defaults for the other compounds");
+            Assert.That(HasNoMutationLayer(psoOptOut), Is.True,
+                "an explicit caller opt-out must override the PSO-specific default");
+        });
+    }
+
+    /// <summary>
+    /// Behavioural regression for the Sudoku-R1 failure mode: every particle starts in the same
+    /// rounding cell, hence PSO has x == pbest == gbest and produces zero velocity. With mutation
+    /// suppressed the best quantised distance cannot improve; with mutation preserved, the same
+    /// deterministic mutation crosses the cell boundary and reaches the optimum.
+    /// </summary>
+    [TestCase(true, -1.0)]
+    [TestCase(false, 0.0)]
+    public void QuantisedPlateau_MutationDiversificationDeterminesWhetherPsoEscapes(
+        bool noMutation, double expectedFitness)
+    {
+        var pso = NewPso(maxGenerations: 2);
+        pso.NoMutation = noMutation;
+
+        var chromosome = new PlateauChromosome(initialValue: 0.49, mutatedValue: 1.1);
+        var fitness = new FuncFitness(c =>
+        {
+            double value = (double)c.GetGene(0).Value;
+            return -Math.Abs(1.0 - Math.Round(value, MidpointRounding.AwayFromZero));
+        });
+        var ga = new MetaGeneticAlgorithm(
+            new MetaPopulation(4, 4, chromosome),
+            fitness,
+            new EliteSelection(),
+            new UniformCrossover(0.5f),
+            new UniformMutation(true),
+            pso.Build())
+        {
+            MutationProbability = 1.0f,
+            Termination = new GenerationNumberTermination(2)
+        };
+
+        ga.Start();
+
+        Assert.That(ga.BestChromosome.Fitness, Is.EqualTo(expectedFitness),
+            noMutation
+                ? "zero-span PSO without mutation must remain in the initial rounding cell"
+                : "mutation-preserving PSO must cross the quantisation boundary");
+    }
+
+    /// <summary>
     /// KEYSTONE end-to-end: the built PSO drives a real <see cref="MetaGeneticAlgorithm"/> and
     /// optimises the Sphere function (minimise sum of squares -> fitness = -sum of squares). The
     /// population uses a randomising chromosome so the swarm is diverse (clones on top of the best
@@ -297,6 +364,23 @@ public class ParticleSwarmOptimizationTests
         });
     }
 
+    private static bool HasNoMutationLayer(IMetaHeuristic heuristic)
+    {
+        IMetaHeuristic? current = heuristic;
+        while (current != null)
+        {
+            if (current is ScopedMetaHeuristic scoped
+                && scoped.Name?.Contains("No-Mutation") == true)
+                return true;
+
+            current = current is ContainerMetaHeuristic container
+                ? container.SubMetaHeuristic
+                : null;
+        }
+
+        return false;
+    }
+
     /// <summary>A bare double&lt;-&gt;double converter for direct operator tests (no embedding).</summary>
     private sealed class IdentityConverter : IGeometricConverter
     {
@@ -335,6 +419,29 @@ public class ParticleSwarmOptimizationTests
             new Gene(_min + RandomizationProvider.Current.GetDouble() * (_max - _min));
 
         public double[] GetDoubleValues() => GetGenes().Select(g => (double)g.Value).ToArray();
+    }
+
+    /// <summary>
+    /// A two-gene chromosome whose initial clones all occupy one quantisation cell while mutation
+    /// deterministically generates a value in the optimum cell.
+    /// </summary>
+    private sealed class PlateauChromosome : ChromosomeBase
+    {
+        private readonly double _initialValue;
+        private readonly double _mutatedValue;
+
+        public PlateauChromosome(double initialValue, double mutatedValue) : base(2)
+        {
+            _initialValue = initialValue;
+            _mutatedValue = mutatedValue;
+            ReplaceGene(0, new Gene(initialValue));
+            ReplaceGene(1, new Gene(initialValue));
+        }
+
+        public override IChromosome CreateNew() =>
+            new PlateauChromosome(_initialValue, _mutatedValue);
+
+        public override Gene GenerateGene(int geneIndex) => new Gene(_mutatedValue);
     }
 
     /// <summary>
