@@ -79,12 +79,18 @@ namespace MetaGeneticSharp
         /// <param name="maxGenerations">Generation budget forwarded to the geometric compounds.</param>
         /// <param name="populationSize">Population size used to size the island archipelagos.</param>
         /// <param name="geometricConverter">Defines how geometric operators transform between gene and metric space; a double-identity converter is built when null.</param>
-        /// <param name="noMutation">Whether the geometric compounds disable mutation.</param>
-        public static IMetaHeuristic CreateMetaHeuristicByName(string name, int maxGenerations = 1000, int populationSize = 100, IGeometricConverter geometricConverter = null, bool noMutation = true)
+        /// <param name="noMutation">
+        /// Whether geometric compounds disable mutation. When omitted, mutation stays enabled for
+        /// canonical PSO so its zero-span convergence state is not absorbing on quantised objectives;
+        /// other compounds retain the historical no-mutation default.
+        /// </param>
+        public static IMetaHeuristic CreateMetaHeuristicByName(string name, int maxGenerations = 1000, int populationSize = 100, IGeometricConverter geometricConverter = null, bool? noMutation = null)
         {
             if (compoundNames.Contains(name))
             {
                 Enum.TryParse<KnownCompoundMetaheuristics>(name, out var enumName);
+                bool effectiveNoMutation = noMutation
+                    ?? enumName != KnownCompoundMetaheuristics.ParticleSwarmOptimization;
                 switch (enumName)
                 {
                     case KnownCompoundMetaheuristics.None:
@@ -119,7 +125,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 if (enumName == KnownCompoundMetaheuristics.WhaleOptimisationNaive)
                                 {
@@ -131,7 +137,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return eo.Build();
                             case KnownCompoundMetaheuristics.ForensicBasedInvestigation:
@@ -139,7 +145,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return fbi.Build();
                             case KnownCompoundMetaheuristics.DifferentialEvolution:
@@ -147,7 +153,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return de.Build();
                             case KnownCompoundMetaheuristics.BareBonesParticleSwarm:
@@ -155,7 +161,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return bbpso.Build();
                             case KnownCompoundMetaheuristics.ParticleSwarmOptimization:
@@ -163,7 +169,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return pso.Build();
                             case KnownCompoundMetaheuristics.SimulatedAnnealing:
@@ -171,7 +177,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return sa.Build();
                             case KnownCompoundMetaheuristics.ScatterSearch:
@@ -179,7 +185,7 @@ namespace MetaGeneticSharp
                                 {
                                     MaxGenerations = maxGenerations,
                                     GeometricConverter = geometricConverter,
-                                    NoMutation = noMutation
+                                    NoMutation = effectiveNoMutation
                                 };
                                 return ss.Build();
                             case KnownCompoundMetaheuristics.Islands5Default:
@@ -204,13 +210,13 @@ namespace MetaGeneticSharp
                                         {
                                             MaxGenerations = maxGenerations,
                                             GeometricConverter = geometricConverter,
-                                            NoMutation = noMutation
+                                            NoMutation = effectiveNoMutation
                                         };
                                         var eoIsland = new EquilibriumOptimizer()
                                         {
                                             MaxGenerations = maxGenerations,
                                             GeometricConverter = geometricConverter,
-                                            NoMutation = noMutation
+                                            NoMutation = effectiveNoMutation
                                         };
                                         var defaultGABest = new DefaultMetaHeuristic();
                                         var defaultIsland = new SimpleCompoundMetaheuristic(defaultGABest);
