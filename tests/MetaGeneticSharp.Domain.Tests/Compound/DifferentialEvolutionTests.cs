@@ -111,6 +111,67 @@ public class DifferentialEvolutionTests
         Assert.That((double)result, Is.EqualTo(10.0).Within(1e-12));
     }
 
+    [Test]
+    public void LinearScaleFactor_InterpolatesAndClampsScheduleEndpoints()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(DifferentialEvolution.LinearScaleFactor(0.1, 0.5, -1, 100),
+                Is.EqualTo(0.1).Within(1e-12));
+            Assert.That(DifferentialEvolution.LinearScaleFactor(0.1, 0.5, 25, 100),
+                Is.EqualTo(0.2).Within(1e-12));
+            Assert.That(DifferentialEvolution.LinearScaleFactor(0.1, 0.5, 100, 100),
+                Is.EqualTo(0.5).Within(1e-12));
+            Assert.That(DifferentialEvolution.LinearScaleFactor(0.1, 0.5, 150, 100),
+                Is.EqualTo(0.5).Within(1e-12));
+        });
+    }
+
+    [Test]
+    public void LinearScaleFactor_NonPositiveBudgetUsesFinalValue()
+    {
+        Assert.That(DifferentialEvolution.LinearScaleFactor(0.1, 0.5, 0, 0),
+            Is.EqualTo(0.5).Within(1e-12));
+    }
+
+    [Test]
+    public void Build_AdaptiveScalePassesGenerationScheduleToTrialOperator()
+    {
+        BasicRandomization.ResetSeed(4321);
+        var observedScales = new System.Collections.Concurrent.ConcurrentBag<double>();
+        var de = NewDe(maxGenerations: 3);
+        de.InitialScaleFactor = 0.1;
+        de.ScaleFactor = 0.5;
+        de.DifferentialOperator = (geneIndex, geneValues, converter, scale, crossoverRate) =>
+        {
+            observedScales.Add(scale);
+            return DifferentialEvolution.DefaultTrialOperator(
+                geneIndex, geneValues, converter, scale, crossoverRate);
+        };
+
+        var ga = new MetaGeneticAlgorithm(
+            new MetaPopulation(10, 10, new RandomDoubleChromosome(-2.0, 2.0, 3)),
+            new FuncFitness(c => -((RandomDoubleChromosome)c).GetDoubleValues().Sum(x => x * x)),
+            new EliteSelection(),
+            new UniformCrossover(0.5f),
+            new UniformMutation(true),
+            de.Build())
+        {
+            Termination = new GenerationNumberTermination(3)
+        };
+
+        ga.Start();
+
+        var distinct = observedScales.Distinct().OrderBy(x => x).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(distinct, Has.Length.GreaterThanOrEqualTo(2));
+            Assert.That(distinct.First(), Is.GreaterThanOrEqualTo(0.1));
+            Assert.That(distinct.Last(), Is.LessThanOrEqualTo(0.5));
+            Assert.That(distinct.Last(), Is.GreaterThan(distinct.First()));
+        });
+    }
+
     /// <summary>
     /// KEYSTONE: the built DE drives a real <see cref="MetaGeneticAlgorithm"/> end-to-end and
     /// optimises the Sphere function (minimise sum of squares -> fitness = -sum of squares, higher

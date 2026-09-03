@@ -74,11 +74,34 @@ namespace MetaGeneticSharp
             return geometricConverter.DoubleToGene(geneIndex, trial);
         }
 
-        /// <summary>The scale (mutation) factor F applied to the difference vector. Defaults to <see cref="DefaultScaleFactor"/>.</summary>
+        /// <summary>The final scale (mutation) factor F applied to the difference vector. Defaults to <see cref="DefaultScaleFactor"/>.</summary>
         public double ScaleFactor { get; set; } = DefaultScaleFactor;
+
+        /// <summary>
+        /// Optional scale factor used at generation zero. When set, F changes linearly from this
+        /// value to <see cref="ScaleFactor"/> over <see cref="GeometricMetaHeuristicBase.MaxGenerations"/>.
+        /// Leave null to preserve the historical fixed-F behaviour.
+        /// </summary>
+        public double? InitialScaleFactor { get; set; }
 
         /// <summary>The binomial crossover rate CR. Defaults to <see cref="DefaultCrossoverRate"/>.</summary>
         public double CrossoverRate { get; set; } = DefaultCrossoverRate;
+
+        /// <summary>
+        /// Interpolates an adaptive scale factor and clamps progress at both schedule endpoints.
+        /// </summary>
+        public static double LinearScaleFactor(
+            double initialScaleFactor,
+            double finalScaleFactor,
+            int generation,
+            int maxGenerations)
+        {
+            if (maxGenerations <= 0)
+                return finalScaleFactor;
+
+            double progress = Math.Max(0.0, Math.Min(1.0, generation / (double)maxGenerations));
+            return initialScaleFactor + progress * (finalScaleFactor - initialScaleFactor);
+        }
 
         /// <summary>The trial-vector operator (mutation + binomial crossover). Overridable to express DE/best/1, DE/rand/2, jittered F, etc.</summary>
         public TrialOperator DifferentialOperator { get; set; } = DefaultTrialOperator;
@@ -86,17 +109,28 @@ namespace MetaGeneticSharp
         /// <inheritdoc />
         protected override IContainerMetaHeuristic BuildMainHeuristic()
         {
-            // Capture the configured constants so the crossover factory closes over stable values.
-            double scale = ScaleFactor;
+            // Capture configured endpoints so the crossover factory closes over stable values.
+            double finalScale = ScaleFactor;
+            double? initialScale = InitialScaleFactor;
             double crossover = CrossoverRate;
 
             // The four-parent geometric crossover: geneValues = [target, r1, r2, r3].
             var trialHeuristic = new CrossoverMetaHeuristic()
                 .WithName("differential mutation + binomial crossover")
                 .WithCrossover(ParamScope.None,
-                    (IMetaHeuristic h, IEvolutionContext ctx) => new GeometricCrossover<object>(GeometricConverter.IsOrdered, 4, false)
-                        .WithLinearGeometricOperator((geneIndex, geneValues) => DifferentialOperator(geneIndex, geneValues, GeometricConverter, scale, crossover))
-                        .WithGeometryEmbedding(GeometricConverter.GetEmbedding()));
+                    (IMetaHeuristic h, IEvolutionContext ctx) =>
+                    {
+                        double scale = initialScale.HasValue
+                            ? LinearScaleFactor(
+                                initialScale.Value,
+                                finalScale,
+                                ctx.Population?.GenerationsNumber ?? 0,
+                                MaxGenerations)
+                            : finalScale;
+                        return new GeometricCrossover<object>(GeometricConverter.IsOrdered, 4, false)
+                            .WithLinearGeometricOperator((geneIndex, geneValues) => DifferentialOperator(geneIndex, geneValues, GeometricConverter, scale, crossover))
+                            .WithGeometryEmbedding(GeometricConverter.GetEmbedding());
+                    });
 
             // Target x_i + three random donors, then the differential trial operator.
             return new MatchMetaHeuristic()
