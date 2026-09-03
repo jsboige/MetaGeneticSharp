@@ -42,7 +42,7 @@ internal sealed class NDMaxProjectionAdapter
     private readonly (double min, double max) m_coordRange;
     private readonly int m_dimension;
     private readonly int m_nbSamples;
-    private readonly Random m_rng;
+    private readonly int m_pixelSeedBase;
 
     public NDMaxProjectionAdapter(
         IFitness fitness,
@@ -74,7 +74,36 @@ internal sealed class NDMaxProjectionAdapter
         m_coordRange = coordRange;
         m_dimension = dimension;
         m_nbSamples = nbSamples;
-        m_rng = rng;
+        m_pixelSeedBase = rng.Next();
+    }
+
+    /// <summary>
+    /// Derive un seed stable par pixel (x, y) : chaque pixel possede ses propres
+    /// tirages, reproductibles independamment de l'ordre d'evaluation. Sans cela,
+    /// le Parallel.For du LandscapeRenderer consomme un RNG partage dans un ordre
+    /// dependant de la planification des threads, et deux rendus du meme seed
+    /// produisent des bitmaps differents (mesure firsthand MGS-7b : pixel (0,0)
+    /// R=53 vs R=119, mean R 157,96 vs 30,63 sur deux runs de new Random(2026)).
+    /// </summary>
+    private static int PixelSeed(int baseSeed, double x, double y)
+    {
+        unchecked
+        {
+            ulong h = Mix(0x9E3779B97F4A7C15UL ^ (ulong)BitConverter.DoubleToInt64Bits(x));
+            h = Mix(h ^ (ulong)BitConverter.DoubleToInt64Bits(y));
+            h = Mix(h ^ (uint)baseSeed);
+            return (int)(h >> 32);
+        }
+    }
+
+    private static ulong Mix(ulong z)
+    {
+        unchecked
+        {
+            z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+            return z ^ (z >> 31);
+        }
     }
 
     /// <summary>
@@ -87,12 +116,13 @@ internal sealed class NDMaxProjectionAdapter
         var sampleCoords = new double[m_dimension];
         sampleCoords[0] = x;
         sampleCoords[1] = y;
+        var pixelRng = new Random(PixelSeed(m_pixelSeedBase, x, y));
         double fValue = double.NegativeInfinity;
         for (int i = 0; i < m_nbSamples; i++)
         {
             for (int extraCoord = 2; extraCoord < m_dimension; extraCoord++)
             {
-                sampleCoords[extraCoord] = m_coordRange.min + m_rng.NextDouble() * coordsRange;
+                sampleCoords[extraCoord] = m_coordRange.min + pixelRng.NextDouble() * coordsRange;
             }
             double f = m_fitness.Evaluate(new PointChromosome(sampleCoords));
             if (f > fValue)
