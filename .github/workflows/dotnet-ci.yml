@@ -26,6 +26,9 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
+      - name: Install libgdiplus (System.Drawing on Linux)
+        run: sudo apt-get update && sudo apt-get install -y libgdiplus
+
       - name: Restore
         run: dotnet restore MetaGeneticSharp.sln
 
