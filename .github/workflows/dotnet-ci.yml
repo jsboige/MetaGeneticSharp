@@ -30,16 +30,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgdiplus
-          # System.Drawing.Common cherche libgdiplus dans $DOTNET_ROOT/shared/Microsoft.NETCore.App/<ver>/
-          # mais apt l'installe sous /usr/lib/x86_64-linux-gnu/. On symlink pour rendre la lib visible
-          # au loader .NET.
-          DOTNET_VER=$(dotnet --version)
-          RUNTIME_DIR="/usr/share/dotnet/shared/Microsoft.NETCore.App/$DOTNET_VER"
-          for src in /usr/lib/x86_64-linux-gnu/libgdiplus*.so*; do
-            [ -e "$src" ] || continue
-            sudo ln -sf "$src" "$RUNTIME_DIR/$(basename "$src")"
+          # System.Drawing.Common cherche libgdiplus dans le repertoire runtime .NET
+          # utilise par les tests. Comme `dotnet --version` peut renvoyer un SDK pre-installed
+          # (.NET 10 ici) sans runtime .NET 9 correspondant, on liste les runtimes Microsoft.NETCore.App
+          # et on symlinke dans chaque repertoire .x.y.z pour couvrir celui utilise par les tests net9.0.
+          for runtime_dir in /usr/share/dotnet/shared/Microsoft.NETCore.App/*/; do
+            for src in /usr/lib/x86_64-linux-gnu/libgdiplus*.so*; do
+              [ -e "$src" ] || continue
+              sudo ln -sf "$src" "${runtime_dir}$(basename "$src")"
+            done
           done
-          ls -la "$RUNTIME_DIR/libgdiplus"*
+          ls -la /usr/share/dotnet/shared/Microsoft.NETCore.App/*/libgdiplus* | head -10
 
       - name: Restore
         run: dotnet restore MetaGeneticSharp.sln
