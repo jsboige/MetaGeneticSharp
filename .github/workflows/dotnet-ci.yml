@@ -27,7 +27,19 @@ jobs:
           dotnet-version: 9.0.x
 
       - name: Install libgdiplus (System.Drawing on Linux)
-        run: sudo apt-get update && sudo apt-get install -y libgdiplus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgdiplus
+          # System.Drawing.Common cherche libgdiplus dans $DOTNET_ROOT/shared/Microsoft.NETCore.App/<ver>/
+          # mais apt l'installe sous /usr/lib/x86_64-linux-gnu/. On symlink pour rendre la lib visible
+          # au loader .NET.
+          DOTNET_VER=$(dotnet --version)
+          RUNTIME_DIR="/usr/share/dotnet/shared/Microsoft.NETCore.App/$DOTNET_VER"
+          for src in /usr/lib/x86_64-linux-gnu/libgdiplus*.so*; do
+            [ -e "$src" ] || continue
+            sudo ln -sf "$src" "$RUNTIME_DIR/$(basename "$src")"
+          done
+          ls -la "$RUNTIME_DIR/libgdiplus"*
 
       - name: Restore
         run: dotnet restore MetaGeneticSharp.sln
