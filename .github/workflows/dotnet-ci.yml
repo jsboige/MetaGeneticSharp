@@ -13,8 +13,12 @@ env:
 
 jobs:
   build:
-    name: Build
-    runs-on: ubuntu-latest
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,28 +30,18 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      - name: Install libgdiplus (System.Drawing on Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgdiplus
-          # System.Drawing.Common charge libgdiplus via dlopen et cherche
-          # les noms explicites `libgdiplus.dll.so` et `libgdiplus.dll` (pas
-          # juste libgdiplus.so) dans le repertoire runtime .NET. Le chemin de
-          # libgdiplus.so.0 varie selon la version Ubuntu (24.04 noble l'a
-          # sous /usr/lib/x86_64-linux-gnu/, mais on est robuste via dpkg -L).
-          REAL_LIB=$(dpkg -L libgdiplus | grep -E 'libgdiplus\.so\.[0-9.]+$' | head -1)
-          echo "Found libgdiplus at: $REAL_LIB"
-          for runtime_dir in /usr/share/dotnet/shared/Microsoft.NETCore.App/*/; do
-            sudo cp "$REAL_LIB" "${runtime_dir}libgdiplus.dll.so"
-            sudo cp "$REAL_LIB" "${runtime_dir}libgdiplus.dll"
-          done
-          ls -la /usr/share/dotnet/shared/Microsoft.NETCore.App/9.0.19/libgdiplus*
-
       - name: Restore
         run: dotnet restore MetaGeneticSharp.sln
 
       - name: Build
         run: dotnet build MetaGeneticSharp.sln --configuration Release --no-restore
 
-      - name: Test
+      - name: Test (skip System.Drawing tests on Linux - .NET 9 dropped support)
+        if: matrix.os != 'ubuntu-latest'
         run: dotnet test MetaGeneticSharp.sln --configuration Release --no-build --verbosity normal
+
+      - name: Test (Linux — exclude System.Drawing.Gdip tests)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet test MetaGeneticSharp.sln --configuration Release --no-build --verbosity normal \
+            --filter "FullyQualifiedName!~BilinearHeightMapFunctionTests&FullyQualifiedName!~CustomImageLandscapeTests&FullyQualifiedName!~DirectBitmapTests&FullyQualifiedName!~KnownFunctionLandscapeNdTests&FullyQualifiedName!~KnownFunctionLandscapeNotebookSmokeTests&FullyQualifiedName!~KnownFunctionLandscapeTests&FullyQualifiedName!~LandscapeRendererTests"
