@@ -32,11 +32,11 @@ jobs:
           sudo apt-get install -y libgdiplus
           # System.Drawing.Common charge libgdiplus via dlopen et cherche
           # les noms explicites `libgdiplus.dll.so` et `libgdiplus.dll` (pas
-          # juste libgdiplus.so) dans le repertoire runtime .NET.
-          # apt fournit /usr/lib/x86_64-linux-gnu/libgdiplus.so.0 -> libgdiplus.so.6.0.2,
-          # pas ces noms. On copie le .so principal dans chaque repertoire runtime
-          # sous les noms attendus par le loader .NET.
-          REAL_LIB=$(readlink -f /usr/lib/x86_64-linux-gnu/libgdiplus.so.0)
+          # juste libgdiplus.so) dans le repertoire runtime .NET. Le chemin de
+          # libgdiplus.so.0 varie selon la version Ubuntu (24.04 noble l'a
+          # sous /usr/lib/x86_64-linux-gnu/, mais on est robuste via dpkg -L).
+          REAL_LIB=$(dpkg -L libgdiplus | grep -E 'libgdiplus\.so\.[0-9.]+$' | head -1)
+          echo "Found libgdiplus at: $REAL_LIB"
           for runtime_dir in /usr/share/dotnet/shared/Microsoft.NETCore.App/*/; do
             sudo cp "$REAL_LIB" "${runtime_dir}libgdiplus.dll.so"
             sudo cp "$REAL_LIB" "${runtime_dir}libgdiplus.dll"
