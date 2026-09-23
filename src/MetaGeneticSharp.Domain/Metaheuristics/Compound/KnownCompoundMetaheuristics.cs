@@ -5,7 +5,8 @@ namespace MetaGeneticSharp
     /// <summary>
     ///   The catalogue of compound metaheuristics the <see cref="MetaHeuristicsService"/>
     ///   knows how to build by name. Covers the Default GA, the reconstructed geometric
-    ///   compounds (WOA / EO / FBI / DE / BareBonesParticleSwarm / SimulatedAnnealing) and the
+    ///   compounds (WOA / EO / FBI / DE / BareBonesParticleSwarm / SimulatedAnnealing), the
+    ///   natural evolution strategies (xNES / SNES) and the
     ///   heterogeneous-island archipelago variants. Ported from GeneticSharp.Domain.Metaheuristics
     ///   (PR giacomelli/GeneticSharp#87).
     /// </summary>
@@ -23,6 +24,8 @@ namespace MetaGeneticSharp
         ParticleSwarmOptimization,
         SimulatedAnnealing,
         ScatterSearch,
+        ExponentialNaturalEvolutionStrategy,
+        SeparableNaturalEvolutionStrategy,
         Islands5Default,
         Islands5DefaultNoMigration,
         Islands5BestMixture,
