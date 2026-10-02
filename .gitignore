@@ -30,3 +30,6 @@ artifacts/
 
 ## notebooks outputs
 .ipynb_checkpoints/
+
+## BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
