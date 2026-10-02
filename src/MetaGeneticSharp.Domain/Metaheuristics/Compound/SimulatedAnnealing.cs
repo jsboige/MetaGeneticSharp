@@ -83,6 +83,54 @@ namespace MetaGeneticSharp
         /// <summary>alpha in T_k = T_0 * alpha^k (forwarded to the Metropolis reinsertion).</summary>
         public double CoolingRate { get; set; } = 0.95;
 
+        /// <summary>
+        ///   Optional exponent coupling the Gaussian step scale to the annealing progress: when set,
+        ///   each proposed step is contracted around the current position by
+        ///   <c>coolingRate^(k * gamma)</c> at generation k -- the same geometric schedule as the
+        ///   acceptance temperature, raised to <c>gamma</c>. Leave null (the default) to preserve the
+        ///   historical behaviour where the step scale tracks the population spread alone.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why this knob exists.</b> Motivated by the MGS-vs-mealpy SA benchmark loop (CoursIA
+        /// #13778): once T_k has cooled to the greedy limit, lateral moves accepted on fitness
+        /// plateaus inflate the population spread, and the spread-relative step scale feeds that
+        /// inflation back -- the population drifts in a near-unbounded random walk instead of
+        /// refining a basin (measured on the Sudoku R1 benchmark: inter-individual spread growing
+        /// past the gene bounds [1, 10) while the best-so-far plateaus for the last quarter of the
+        /// budget). Coupling the step to the same geometric decay as the temperature keeps the
+        /// proposal fine-grained exactly when uphill acceptance has frozen out, without touching the
+        /// shared geometric converter (and therefore the other compounds).
+        /// </para>
+        /// </remarks>
+        public double? StepCoolingExponent { get; set; }
+
+        /// <summary>
+        ///   The step-contraction factor at generation <paramref name="generation"/>:
+        ///   <c>coolingRate^(generation * exponent)</c>, i.e. (T_k / T_0)^exponent. Always in (0, 1]
+        ///   for a valid schedule and a non-negative exponent.
+        /// </summary>
+        public static double CooledStepScale(double coolingRate, int generation, double exponent)
+        {
+            return Math.Pow(coolingRate, generation * exponent);
+        }
+
+        /// <summary>
+        ///   Contracts a proposed gene value towards the current one by the given factor -- an
+        ///   homothety of the step around the current position:
+        ///   <c>x' = current + factor * (proposed - current)</c>. A factor of 1 returns the proposal
+        ///   unchanged; a factor of 0 collapses to the current position. Because it post-processes
+        ///   the proposed value, it composes with any <see cref="SamplingOperator"/>.
+        /// </summary>
+        public static object ApplyStepCooling(int geneIndex, object proposed, object current, IGeometricConverter geometricConverter, double factor)
+        {
+            if (factor >= 1.0)
+                return proposed;
+            double x = geometricConverter.GeneToDouble(geneIndex, proposed);
+            double c = geometricConverter.GeneToDouble(geneIndex, current);
+            return geometricConverter.DoubleToGene(geneIndex, c + factor * (x - c));
+        }
+
         /// <inheritdoc />
         public override IReinsertion GetDefaultReinsertion()
         {
@@ -92,13 +140,30 @@ namespace MetaGeneticSharp
         /// <inheritdoc />
         protected override IContainerMetaHeuristic BuildMainHeuristic()
         {
+            // Capture the configured schedule so the crossover factory closes over stable values.
+            double? stepCoolingExponent = StepCoolingExponent;
+            double coolingRate = CoolingRate;
+
             // The two-parent geometric crossover: geneValues = [current (Current), random (Random)].
             var perturbHeuristic = new CrossoverMetaHeuristic()
                 .WithName("simulated-annealing gaussian perturbation")
                 .WithCrossover(ParamScope.None,
-                    (IMetaHeuristic h, IEvolutionContext ctx) => new GeometricCrossover<object>(GeometricConverter.IsOrdered, 2, false)
-                        .WithLinearGeometricOperator((geneIndex, geneValues) => SamplingOperator(geneIndex, geneValues, GeometricConverter))
-                        .WithGeometryEmbedding(GeometricConverter.GetEmbedding()));
+                    (IMetaHeuristic h, IEvolutionContext ctx) =>
+                    {
+                        // Null exponent = the historical fixed-coupling path (factor 1, no post-processing).
+                        double factor = stepCoolingExponent.HasValue
+                            ? CooledStepScale(coolingRate, ctx.Population?.GenerationsNumber ?? 0, stepCoolingExponent.Value)
+                            : 1.0;
+                        return new GeometricCrossover<object>(GeometricConverter.IsOrdered, 2, false)
+                            .WithLinearGeometricOperator((geneIndex, geneValues) =>
+                            {
+                                var proposed = SamplingOperator(geneIndex, geneValues, GeometricConverter);
+                                return factor >= 1.0
+                                    ? proposed
+                                    : ApplyStepCooling(geneIndex, proposed, geneValues.First(), GeometricConverter, factor);
+                            })
+                            .WithGeometryEmbedding(GeometricConverter.GetEmbedding());
+                    });
 
             // Current position + a random individual (for the step scale), then the isotropic Gaussian step.
             return new MatchMetaHeuristic()
