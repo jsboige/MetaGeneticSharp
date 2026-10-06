@@ -188,6 +188,18 @@ namespace MetaGeneticSharp
                                     NoMutation = effectiveNoMutation
                                 };
                                 return ss.Build();
+                            case KnownCompoundMetaheuristics.ExponentialNaturalEvolutionStrategy:
+                            case KnownCompoundMetaheuristics.SeparableNaturalEvolutionStrategy:
+                                var nes = new NaturalEvolutionStrategy()
+                                {
+                                    MaxGenerations = maxGenerations,
+                                    GeometricConverter = geometricConverter,
+                                    NoMutation = effectiveNoMutation,
+                                    CovarianceModel = enumName == KnownCompoundMetaheuristics.ExponentialNaturalEvolutionStrategy
+                                        ? NesCovarianceModel.Full
+                                        : NesCovarianceModel.Separable
+                                };
+                                return nes.Build();
                             case KnownCompoundMetaheuristics.Islands5Default:
                             case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:
                             case KnownCompoundMetaheuristics.Islands5BestMixture:
@@ -272,6 +284,9 @@ namespace MetaGeneticSharp
                     case KnownCompoundMetaheuristics.SimulatedAnnealing:
                     case KnownCompoundMetaheuristics.ScatterSearch:
                         return typeof(MatchMetaHeuristic);
+                    case KnownCompoundMetaheuristics.ExponentialNaturalEvolutionStrategy:
+                    case KnownCompoundMetaheuristics.SeparableNaturalEvolutionStrategy:
+                        return typeof(NaturalEvolutionStrategyMetaHeuristic);
                     case KnownCompoundMetaheuristics.Islands5Default:
                     case KnownCompoundMetaheuristics.Islands5DefaultNoMigration:
                     case KnownCompoundMetaheuristics.Islands5BestMixture:
