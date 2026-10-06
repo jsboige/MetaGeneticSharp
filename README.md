@@ -87,6 +87,18 @@ dotnet build
 dotnet test
 ```
 
+## Benchmarks
+
+Banc BenchmarkDotNet sur l'API publique (`benchmarks/MetaGeneticSharp.Benchmarks`) :
+boucles random search (évaluation fitness + sélection du meilleur), dimension
+supérieure, et double-course centered/shifted de `CenterBiasBenchmark`. Charges à
+seed fixe (7), sans I/O ni réseau — résultats et protocole de reproduction dans
+[`benchmarks/BASELINE-net9.0.md`](benchmarks/BASELINE-net9.0.md).
+
+```bash
+dotnet run -c Release --project benchmarks/MetaGeneticSharp.Benchmarks -- --filter "*" -j short
+```
+
 ## References
 
 - Van Thieu, N., Mirjalili, S. (2023). "MEALPY: An open-source library for latest meta-heuristic algorithms in Python." *Journal of Systems Architecture*, 139. [GitHub](https://github.com/thieu1995/mealpy)

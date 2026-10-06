@@ -27,6 +27,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaGeneticSharp.Extensions
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaGeneticSharp.Infrastructure.Tests", "tests\MetaGeneticSharp.Infrastructure.Tests\MetaGeneticSharp.Infrastructure.Tests.csproj", "{6E53EDBD-D58F-4E74-9DD6-EDBD2E57F06F}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "benchmarks", "benchmarks", "{66320409-64EC-F7C5-3DEF-65E7510DAAD1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MetaGeneticSharp.Benchmarks", "benchmarks\MetaGeneticSharp.Benchmarks\MetaGeneticSharp.Benchmarks.csproj", "{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -145,6 +149,18 @@ Global
 		{6E53EDBD-D58F-4E74-9DD6-EDBD2E57F06F}.Release|x64.Build.0 = Release|Any CPU
 		{6E53EDBD-D58F-4E74-9DD6-EDBD2E57F06F}.Release|x86.ActiveCfg = Release|Any CPU
 		{6E53EDBD-D58F-4E74-9DD6-EDBD2E57F06F}.Release|x86.Build.0 = Release|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Debug|x64.Build.0 = Debug|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Debug|x86.Build.0 = Debug|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Release|x64.ActiveCfg = Release|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Release|x64.Build.0 = Release|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Release|x86.ActiveCfg = Release|Any CPU
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -159,5 +175,6 @@ Global
 		{57F4BFE1-30A1-47EB-9181-FCABB65A4620} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{170651A9-0D63-4CA9-9FC1-8119D5D25B82} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{6E53EDBD-D58F-4E74-9DD6-EDBD2E57F06F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{B890A2FF-EAAB-4C95-A1BF-BE5543345E1C} = {66320409-64EC-F7C5-3DEF-65E7510DAAD1}
 	EndGlobalSection
 EndGlobal
