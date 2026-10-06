@@ -194,6 +194,46 @@ public class SimulatedAnnealingTests
         public IGeometryEmbedding<object> GetEmbedding() => null!;
     }
 
+    /// <summary>Pins the opt-in step-cooling schedule: (T_k / T_0)^gamma = alpha^(k*gamma).</summary>
+    [Test]
+    public void CooledStepScale_FollowsTheGeometricSchedule()
+    {
+        Assert.Multiple(() =>
+        {
+            // Generation 0: no contraction, whatever the exponent.
+            Assert.That(SimulatedAnnealing.CooledStepScale(0.95, 0, 1.0), Is.EqualTo(1.0).Within(1e-12));
+            // gamma = 1 couples the step to the temperature itself.
+            Assert.That(SimulatedAnnealing.CooledStepScale(0.95, 160, 1.0), Is.EqualTo(Math.Pow(0.95, 160)).Within(1e-12));
+            // gamma = 0.5 is the square root of the temperature ratio (a slower contraction).
+            Assert.That(SimulatedAnnealing.CooledStepScale(0.95, 320, 0.5), Is.EqualTo(Math.Pow(0.95, 160)).Within(1e-12));
+            // gamma = 2 contracts twice as fast as the temperature.
+            Assert.That(SimulatedAnnealing.CooledStepScale(0.5, 4, 2.0), Is.EqualTo(Math.Pow(0.5, 8)).Within(1e-12));
+        });
+    }
+
+    /// <summary>
+    /// The homothety contracts the proposed value around the current position:
+    /// x' = current + factor * (proposed - current). Factor 1 returns the proposal unchanged,
+    /// factor 0 collapses to the current position.
+    /// </summary>
+    [Test]
+    public void ApplyStepCooling_ContractsTheProposalAroundCurrent()
+    {
+        var conv = new IdentityConverter();
+
+        Assert.Multiple(() =>
+        {
+            // Midpoint at factor 0.5: 2 + 0.5 * (6 - 2) = 4.
+            Assert.That((double)SimulatedAnnealing.ApplyStepCooling(0, 6.0, 2.0, conv, 0.5), Is.EqualTo(4.0).Within(1e-12));
+            // Factor 0 collapses the step entirely onto the current position.
+            Assert.That((double)SimulatedAnnealing.ApplyStepCooling(0, 6.0, 2.0, conv, 0.0), Is.EqualTo(2.0).Within(1e-12));
+            // A contraction also works when the proposal is below the current position.
+            Assert.That((double)SimulatedAnnealing.ApplyStepCooling(0, -2.0, 2.0, conv, 0.25), Is.EqualTo(1.0).Within(1e-12));
+            // Factor >= 1 returns the proposal object unchanged (the historical fast path).
+            Assert.That(SimulatedAnnealing.ApplyStepCooling(0, 6.0, 2.0, conv, 1.0), Is.EqualTo(6.0));
+        });
+    }
+
     /// <summary>
     /// A chromosome that randomises each gene in [min, max] on CreateNew, so the population has a non-zero
     /// spread (required for SA: zero spread gives zero-scale steps and no search).
