@@ -123,7 +123,11 @@ namespace MetaGeneticSharp
                     new MatchingSettings() { MatchingKind = MatchingKind.Child, CachingScope = ParamScope.Generation},
                 })
                 .WithChildMetaHeuristic(centroidHeuristic)
-                .WithCustomMatchStep(new[] { new MatchingSettings() { MatchingKind = MatchingKind.Random } })
+                // mealpy draws c_eq uniformly over the whole 5-candidate pool
+                // (generator.integers(0, len(c_pool))). RandomIncludesCurrent must be set,
+                // otherwise the random pick never draws the first candidate (the current best)
+                // and remaps it onto the last one (the centroid): best1 = 0%, centroid = 25%.
+                .WithCustomMatchStep(new[] { new MatchingSettings() { MatchingKind = MatchingKind.Random, RandomIncludesCurrent = true } })
                 .WithCrossoverMetaHeuristic(generationHeuristic);
 
 
