@@ -33,7 +33,27 @@ public class CustomImageLandscapeTests
         return bitmap;
     }
 
+    /// <summary>
+    /// The same gradient written as a PNG file with SkiaSharp (no GDI+), for the
+    /// <see cref="LandscapeMaps.CreateFunctionFromFile"/> tests, which run on every platform.
+    /// </summary>
+    private static void WriteGradientPng(string path, int width = 16, int height = 12)
+    {
+        using var bitmap = new GeneticSharp.Infrastructure.Framework.Images.DirectBitmap(width, height);
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int v = (int)(255.0 * x / (width - 1));
+                bitmap.SetPixel(x, y, Color.FromArgb(v, v, v));
+            }
+        }
+
+        File.WriteAllBytes(path, SkiaLandscapeRenderer.EncodePng(bitmap));
+    }
+
     [Test]
+    [Platform("Win", Reason = "GDI+ (System.Drawing.Common) is Windows-only since .NET 7")]
     public void CreateFunctionFromImage_RangesMatchImageDimensions()
     {
         using Bitmap source = GradientBitmap(16, 12);
@@ -47,6 +67,7 @@ public class CustomImageLandscapeTests
     }
 
     [Test]
+    [Platform("Win", Reason = "GDI+ (System.Drawing.Common) is Windows-only since .NET 7")]
     public void CreateFunctionFromImage_EvaluatesPixelBrightnessInByteRange()
     {
         using Bitmap source = GradientBitmap();
@@ -59,6 +80,7 @@ public class CustomImageLandscapeTests
     }
 
     [Test]
+    [Platform("Win", Reason = "GDI+ (System.Drawing.Common) is Windows-only since .NET 7")]
     public void CreateFunctionFromImage_DoesNotDisposeCallerImage()
     {
         using Bitmap source = GradientBitmap();
@@ -73,6 +95,7 @@ public class CustomImageLandscapeTests
     }
 
     [Test]
+    [Platform("Win", Reason = "GDI+ (System.Drawing.Common) is Windows-only since .NET 7")]
     public void CreateFunctionFromImage_RendersGraphicHeatmapPng()
     {
         // KEYSTONE: a custom image drives the verbatim renderer just like the shipped maps.
@@ -97,10 +120,7 @@ public class CustomImageLandscapeTests
         string path = Path.Combine(Path.GetTempPath(), $"mgs_h2_{Guid.NewGuid():N}.png");
         try
         {
-            using (Bitmap source = GradientBitmap(20, 14))
-            {
-                source.Save(path, System.Drawing.Imaging.ImageFormat.Png);
-            }
+            WriteGradientPng(path, 20, 14);
 
             using ImageHeightMapFunction function = LandscapeMaps.CreateFunctionFromFile(path);
             System.Collections.Generic.IList<(double min, double max)> ranges = function.Ranges(2);
@@ -123,7 +143,7 @@ public class CustomImageLandscapeTests
         string path = Path.Combine(Path.GetTempPath(), $"mgs_h2_{Guid.NewGuid():N}.png");
         try
         {
-            using (Bitmap source = GradientBitmap()) source.Save(path, System.Drawing.Imaging.ImageFormat.Png);
+            WriteGradientPng(path);
             using ImageHeightMapFunction function = LandscapeMaps.CreateFunctionFromFile(path, "MyLandscape");
             Assert.That(function.Name, Is.EqualTo("MyLandscape"));
         }

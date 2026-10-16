@@ -43,6 +43,62 @@ namespace GeneticSharp.Infrastructure.Framework.Images
             return newBitmap;
         }
 
+        /// <summary>
+        /// Platform-independent counterpart of <see cref="MakeGrayscaleImage(Image)"/>: applies the
+        /// same grayscale <see cref="ColorMatrix"/> (luma weights .3, .59, .11 on every color
+        /// channel, alpha unchanged) to the pixels of a <see cref="DirectBitmap"/>, in managed
+        /// code and without GDI+. The result is a new, independent <see cref="DirectBitmap"/>;
+        /// <paramref name="original"/> is left untouched and still belongs to the caller.
+        ///
+        /// <para>Pixels are read and written in the <see cref="PixelFormat.Format32bppPArgb"/>
+        /// layout of <see cref="DirectBitmap.Bits"/>: a translucent pixel is un-premultiplied
+        /// before the matrix and premultiplied again after it, since the matrix applies to
+        /// straight colors and the canvas of the original is premultiplied. The weighted sum is
+        /// computed in single precision and rounded to the nearest level, so a pixel that is
+        /// already gray keeps its level. For opaque pixels the result is pinned against the GDI+
+        /// conversion on Windows (<c>DirectBitmapGrayscaleTests</c>); translucent pixels are not
+        /// compared with GDI+, whose premultiplication rounding may differ by one level.</para>
+        /// </summary>
+        public static DirectBitmap MakeGrayscaleImage(this DirectBitmap original)
+        {
+            ArgumentNullException.ThrowIfNull(original);
+            var gray = new int[original.Bits.Length];
+            for (int i = 0; i < gray.Length; i++)
+            {
+                gray[i] = ToGrayscalePArgb(original.Bits[i]);
+            }
+
+            return new DirectBitmap(original.Width, original.Height, gray);
+        }
+
+        private static int ToGrayscalePArgb(int pargb)
+        {
+            int a = (pargb >> 24) & 0xFF;
+            if (a == 0)
+            {
+                return 0;
+            }
+
+            int r = (pargb >> 16) & 0xFF;
+            int g = (pargb >> 8) & 0xFF;
+            int b = pargb & 0xFF;
+            if (a < 255)
+            {
+                r = Math.Min(255, (r * 255 + a / 2) / a);
+                g = Math.Min(255, (g * 255 + a / 2) / a);
+                b = Math.Min(255, (b * 255 + a / 2) / a);
+            }
+
+            float luma = r * .3f + g * .59f + b * .11f;
+            int level = Math.Clamp((int)(luma + .5f), 0, 255);
+            if (a < 255)
+            {
+                level = (level * a + 127) / 255;
+            }
+
+            return (a << 24) | (level << 16) | (level << 8) | level;
+        }
+
         //todo: The following was to be used in DirectBitmap to create from bitmap/clone, but it has a memory leak, ImageConverter does not have the issue but it is not available in .Net core<3.0, and a move to SharpImage or other libs is recommended rather the compatibility System.Drawing
 
         //public static int[] ToIntArray(this Bitmap bmp)

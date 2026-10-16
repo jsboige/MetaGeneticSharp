@@ -20,6 +20,19 @@ namespace GeneticSharp.Extensions.Mathematic.Functions
             }
         }
 
+        /// <summary>
+        /// Cross-platform counterpart of <see cref="TargetImage"/>: the setter copies a
+        /// <see cref="DirectBitmap"/> into the internal grayscale bitmap with the same matrix,
+        /// computed in managed code (<c>ImageExtensions.MakeGrayscaleImage(DirectBitmap)</c>), so
+        /// no GDI+ is needed. The caller keeps ownership of the argument. The getter returns the
+        /// internal grayscale copy, as <see cref="TargetImage"/> returns its GDI+ view.
+        /// </summary>
+        public DirectBitmap TargetBitmap
+        {
+            get => _targetImage;
+            set => _targetImage = value.MakeGrayscaleImage();
+        }
+
         public Func<double[], double> Function => ComputeValue;
 
         public Func<int, IList<(double min, double max)>> Ranges => i =>

@@ -125,7 +125,7 @@ public class SkiaLandscapeRendererTests
             }
         }
 
-        using ImageHeightMapFunction function = LandscapeMaps.CreateFunctionFromImage(source.Bitmap, "grad");
+        using ImageHeightMapFunction function = LandscapeMaps.CreateFunctionFromBitmap(source, "grad");
         byte[] png = SkiaLandscapeRenderer.RenderHeatmapPng(function, width: 100, height: 70);
 
         AssertPngMagic(png);
