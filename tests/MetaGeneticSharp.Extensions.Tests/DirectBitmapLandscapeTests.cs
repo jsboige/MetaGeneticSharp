@@ -13,7 +13,7 @@ namespace MetaGeneticSharp.Extensions.Tests;
 /// well as Windows. The <c>Gdi_*</c> tests are the keystone: on Windows they check that the new
 /// path yields, pixel for pixel, the grayscale field of the original GDI+ path
 /// (<see cref="LandscapeMaps.Load"/> then jsboige's <c>MakeGrayscaleImage()</c> @ d05826fd), on the
-/// four shipped maps and on a colored image.
+/// four shipped maps and on a gray image.
 /// </summary>
 [TestFixture]
 public class DirectBitmapLandscapeTests
@@ -177,15 +177,17 @@ public class DirectBitmapLandscapeTests
 
     [Test]
     [Platform("Win", Reason = GdiReason)]
-    public void Gdi_ColorImage_FromBitmapMatchesFromImage()
+    public void Gdi_GrayImage_FromBitmapMatchesFromImage()
     {
-        // A colored opaque source through both public entry points gives the same field.
+        // A gray source through both public entry points gives the same field. (Colored sources may
+        // differ by one level on exact half-level ties: DirectBitmapGrayscaleTests measures it.)
         using var source = new DirectBitmap(40, 30);
         for (int y = 0; y < 30; y++)
         {
             for (int x = 0; x < 40; x++)
             {
-                source.SetPixel(x, y, Color.FromArgb(255, (x * 37) % 256, (y * 53) % 256, ((x + y) * 29) % 256));
+                int v = (x * 37 + y * 53) % 256;
+                source.SetPixel(x, y, Color.FromArgb(255, v, v, v));
             }
         }
 

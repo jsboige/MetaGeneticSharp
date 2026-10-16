@@ -55,9 +55,13 @@ namespace GeneticSharp.Infrastructure.Framework.Images
         /// before the matrix and premultiplied again after it, since the matrix applies to
         /// straight colors and the canvas of the original is premultiplied. The weighted sum is
         /// computed in single precision and rounded to the nearest level, so a pixel that is
-        /// already gray keeps its level. For opaque pixels the result is pinned against the GDI+
-        /// conversion on Windows (<c>DirectBitmapGrayscaleTests</c>); translucent pixels are not
-        /// compared with GDI+, whose premultiplication rounding may differ by one level.</para>
+        /// already gray keeps its level.</para>
+        ///
+        /// <para>Compared with the GDI+ conversion on all 2^24 opaque colors (Windows,
+        /// <c>DirectBitmapGrayscaleTests</c>): every gray, hence every height map, converts
+        /// identically. A color whose exact luma <c>(30r + 59g + 11b) / 100</c> ends in .5 is a tie
+        /// that GDI+ and this method may round differently, by one level; about 1 % of colors are
+        /// ties. Translucent pixels are not compared with GDI+.</para>
         /// </summary>
         public static DirectBitmap MakeGrayscaleImage(this DirectBitmap original)
         {
