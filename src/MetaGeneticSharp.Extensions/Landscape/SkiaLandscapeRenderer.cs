@@ -33,11 +33,12 @@ namespace MetaGeneticSharp;
 ///   on Linux.</item>
 /// </list>
 ///
-/// <para>Honesty note: this does not make the image-backed modes
-/// (<see cref="LandscapeMode.KnownHeightMap"/> / <see cref="LandscapeMode.CustomImage"/>)
-/// cross-platform — their grayscale load path still goes through the verbatim
-/// <c>ImageExtensions.MakeGrayscaleImage</c> (GDI+). Migrating that decode/grayscale path to
-/// SkiaSharp is the broader SharpImage move jsboige flagged, tracked as a follow-up.</para>
+/// <para>The image-backed modes (<see cref="LandscapeMode.KnownHeightMap"/> /
+/// <see cref="LandscapeMode.CustomImage"/>) are cross-platform too: <see cref="DirectBitmap"/>
+/// builds its GDI+ view only on demand, <see cref="LandscapeMaps.DecodeBitmap"/> decodes the maps
+/// and image files with SkiaSharp, and the grayscale copy is computed in managed code with the
+/// matrix of the verbatim <c>ImageExtensions.MakeGrayscaleImage</c>. Only the overloads that take
+/// or return a GDI+ <see cref="System.Drawing.Image"/> stay Windows-only.</para>
 ///
 /// <para>Every color/marker formula reused here is the verbatim ramp of jsboige's
 /// <c>LandscapeExplorerSampleController.cs</c> @ d05826fd (via <see cref="LandscapeRenderer.GetColor"/>

@@ -4,9 +4,11 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using GeneticSharp.Extensions.Mathematic.Functions;
 using GeneticSharp.Infrastructure.Framework.Images;
+using SkiaSharp;
 
 namespace MetaGeneticSharp;
 
@@ -82,20 +84,57 @@ public static class LandscapeMaps
 
     /// <summary>
     /// Streams one of the four original height maps from its embedded resource. The bytes
-    /// are the verbatim PNG authored by jsboige (no re-encode).
+    /// are the verbatim PNG authored by jsboige (no re-encode). The result is a GDI+
+    /// <see cref="Image"/>, so this overload is Windows-only (System.Drawing.Common); the
+    /// cross-platform sibling is <see cref="LoadBitmap"/>.
     /// </summary>
     public static Image Load(KnownHeightMap map)
     {
+        using Stream stream = OpenResource(map);
+        return Image.FromStream(stream);
+    }
+
+    /// <summary>
+    /// Decodes one of the four original height maps into a <see cref="DirectBitmap"/> with
+    /// SkiaSharp: the same verbatim PNG bytes as <see cref="Load"/>, without GDI+, so it works on
+    /// Linux and macOS as well as Windows. The four maps are 8-bit RGBA PNGs with no gamma or
+    /// color-profile chunk, so the decode is lossless on every platform.
+    /// </summary>
+    public static DirectBitmap LoadBitmap(KnownHeightMap map)
+    {
+        using Stream stream = OpenResource(map);
+        return DecodeBitmap(stream);
+    }
+
+    /// <summary>
+    /// Decodes an encoded image (PNG, JPEG, BMP, GIF, WebP, ...) into a <see cref="DirectBitmap"/>
+    /// with SkiaSharp, in the premultiplied ARGB layout of <see cref="DirectBitmap.Bits"/>. No
+    /// GDI+ and no color-space conversion is involved; the caller owns both the stream and the
+    /// returned bitmap.
+    /// </summary>
+    /// <exception cref="ArgumentException">The stream does not hold a decodable image.</exception>
+    public static DirectBitmap DecodeBitmap(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        using SKCodec codec = SKCodec.Create(stream)
+            ?? throw new ArgumentException("The stream does not hold a decodable image.", nameof(stream));
+        // Bgra8888 + Premul is the in-memory layout of a Format32bppPArgb int on a little-endian
+        // machine (B, G, R, A), the same mapping SkiaLandscapeRenderer.EncodePng relies on.
+        var info = new SKImageInfo(codec.Info.Width, codec.Info.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using SKBitmap decoded = SKBitmap.Decode(codec, info)
+            ?? throw new ArgumentException("The image could not be decoded.", nameof(stream));
+        var bits = new int[info.Width * info.Height];
+        Marshal.Copy(decoded.GetPixels(), bits, 0, bits.Length);
+        return new DirectBitmap(info.Width, info.Height, bits);
+    }
+
+    private static Stream OpenResource(KnownHeightMap map)
+    {
         string name = ResourcePrefix + map + ".png";
         Assembly asm = typeof(LandscapeMaps).Assembly;
-        using Stream? stream = asm.GetManifestResourceStream(name);
-        if (stream is null)
-        {
-            throw new InvalidOperationException(
+        return asm.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException(
                 $"Embedded height map '{name}' not found. Available: {string.Join(", ", asm.GetManifestResourceNames())}");
-        }
-
-        return Image.FromStream(stream);
     }
 
     /// <summary>
@@ -103,19 +142,23 @@ public static class LandscapeMaps
     /// grayscale pixel intensity with inverse-distance interpolation) over one of the four
     /// original maps. The returned function maximizes elevation = pixel brightness.
     ///
-    /// <para><b>Image lifetime (M2).</b> <see cref="Load"/> returns a freshly decoded
-    /// <see cref="Image"/> that this method owns. The
-    /// <see cref="ImageHeightMapFunction.TargetImage"/> setter copies it into an internal grayscale
-    /// <see cref="DirectBitmap"/> (jsboige's <c>MakeGrayscaleImage()</c> @ d05826fd), so the loaded
-    /// source is no longer needed once assigned and is disposed here — only the retained grayscale
-    /// copy survives. This mirrors the <see cref="CreateFunctionFromFile"/> pattern and removes a
-    /// GDI+ handle leak (the source <see cref="Image"/> was previously never disposed). The
-    /// grayscale infrastructure is jsboige's @ d05826fd; only this wrapper's disposal is authored.</para>
+    /// <para><b>Image lifetime (M2).</b> <see cref="LoadBitmap"/> returns a freshly decoded
+    /// <see cref="DirectBitmap"/> that this method owns. The
+    /// <see cref="ImageHeightMapFunction.TargetBitmap"/> setter copies it into an internal grayscale
+    /// <see cref="DirectBitmap"/> (the matrix of jsboige's <c>MakeGrayscaleImage()</c> @ d05826fd),
+    /// so the decoded source is no longer needed once assigned and is disposed here — only the
+    /// retained grayscale copy survives. This mirrors the <see cref="CreateFunctionFromFile"/>
+    /// pattern. The grayscale infrastructure is jsboige's @ d05826fd; only this wrapper's
+    /// disposal is authored.</para>
+    ///
+    /// <para><b>Platforms.</b> The map is decoded with SkiaSharp and converted to grayscale in
+    /// managed code, so this method needs no GDI+ and runs on Linux and macOS as well as
+    /// Windows. It used to go through <see cref="Load"/> and the GDI+ grayscale copy.</para>
     /// </summary>
     public static ImageHeightMapFunction CreateFunction(KnownHeightMap map)
     {
-        using Image source = Load(map);
-        return new ImageHeightMapFunction { TargetImage = source, Name = map.ToString() };
+        using DirectBitmap source = LoadBitmap(map);
+        return new ImageHeightMapFunction { TargetBitmap = source, Name = map.ToString() };
     }
 
     /// <summary>
@@ -138,24 +181,48 @@ public static class LandscapeMaps
     }
 
     /// <summary>
+    /// Cross-platform sibling of <see cref="CreateFunctionFromImage"/>: builds an
+    /// <see cref="ImageHeightMapFunction"/> over a <see cref="DirectBitmap"/> filled pixel by
+    /// pixel (<see cref="DirectBitmap.SetPixel"/>), with no GDI+ involved. Same grayscale
+    /// elevation field, same verbatim inverse-distance interpolation. The
+    /// <see cref="ImageHeightMapFunction.TargetBitmap"/> setter copies <paramref name="bitmap"/>,
+    /// so the caller keeps ownership of the argument.
+    /// </summary>
+    /// <param name="bitmap">Any bitmap to read as a height field (its R channel after grayscale).</param>
+    /// <param name="name">Optional label for the function (defaults to "CustomImage").</param>
+    public static ImageHeightMapFunction CreateFunctionFromBitmap(DirectBitmap bitmap, string? name = null)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+        return new ImageHeightMapFunction { TargetBitmap = bitmap, Name = name ?? "CustomImage" };
+    }
+
+    /// <summary>
     /// Builds an <see cref="ImageHeightMapFunction"/> from an image file on disk (PNG, JPEG, ...).
     /// Completes the three-mode symmetry: <see cref="CreateFunction(KnownHeightMap)"/> for the
     /// four shipped maps, <see cref="CreateFunctionFromImage"/> for an in-memory bitmap, and this
     /// overload for a file path. The source image is loaded, copied to grayscale by the
     /// <see cref="ImageHeightMapFunction.TargetImage"/> setter, then disposed here — only the
-    /// internal grayscale copy is retained (no source-image leak).
+    /// internal grayscale copy is retained (no source-image leak, and the file is released).
+    /// The file is decoded with SkiaSharp (<see cref="DecodeBitmap"/>), so this method needs no
+    /// GDI+ and runs on Linux and macOS as well as Windows.
     /// </summary>
-    /// <param name="path">Path to an image file readable by <see cref="Image.FromFile(string)"/>.</param>
+    /// <param name="path">Path to an image file decodable by <see cref="DecodeBitmap"/>.</param>
     /// <param name="name">Optional label (defaults to the file name without extension).</param>
     public static ImageHeightMapFunction CreateFunctionFromFile(string path, string? name = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        using Image source = Image.FromFile(path);
+        using DirectBitmap source = DecodeFile(path);
         return new ImageHeightMapFunction
         {
-            TargetImage = source,
+            TargetBitmap = source,
             Name = name ?? Path.GetFileNameWithoutExtension(path),
         };
+    }
+
+    private static DirectBitmap DecodeFile(string path)
+    {
+        using FileStream stream = File.OpenRead(path);
+        return DecodeBitmap(stream);
     }
 
     /// <summary>
@@ -177,6 +244,20 @@ public static class LandscapeMaps
     {
         ArgumentNullException.ThrowIfNull(image);
         return new BilinearHeightMapFunction { TargetImage = image, Name = name ?? "CustomImageBilinear" };
+    }
+
+    /// <summary>
+    /// Cross-platform sibling of <see cref="CreateBilinearFunctionFromImage"/>, over a
+    /// <see cref="DirectBitmap"/> (no GDI+): the bilinear counterpart of
+    /// <see cref="CreateFunctionFromBitmap"/>. The caller keeps ownership of
+    /// <paramref name="bitmap"/>.
+    /// </summary>
+    /// <param name="bitmap">Any bitmap to read as a height field (its R channel after grayscale).</param>
+    /// <param name="name">Optional label (defaults to "CustomImageBilinear").</param>
+    public static BilinearHeightMapFunction CreateBilinearFunctionFromBitmap(DirectBitmap bitmap, string? name = null)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+        return new BilinearHeightMapFunction { TargetBitmap = bitmap, Name = name ?? "CustomImageBilinear" };
     }
 }
 

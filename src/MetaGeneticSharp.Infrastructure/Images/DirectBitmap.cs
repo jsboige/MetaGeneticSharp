@@ -7,7 +7,19 @@ namespace GeneticSharp.Infrastructure.Framework.Images
 {
     public class DirectBitmap : IDisposable, ICloneable
     {
-        public Bitmap Bitmap { get; private set; }
+        private Bitmap? _bitmap;
+
+        /// <summary>
+        /// GDI+ view over <see cref="Bits"/>, created on first access. Pixel reads and writes
+        /// (<see cref="GetPixel"/>, <see cref="SetPixel"/>, <see cref="Bits"/>) never touch GDI+,
+        /// so a <see cref="DirectBitmap"/> that is only filled and read works on every platform;
+        /// GDI+ (System.Drawing.Common, Windows-only since .NET 7) is needed only when a caller asks
+        /// for this property, e.g. to draw on it with <see cref="Graphics"/>. jsboige's original
+        /// (@ d05826fd) built the view eagerly in the constructor, which made the type unusable
+        /// outside Windows; the view itself is unchanged: same pinned array, same stride, same
+        /// <see cref="PixelFormat.Format32bppPArgb"/> layout.
+        /// </summary>
+        public Bitmap Bitmap => _bitmap ??= CreateBitmap();
         public int[] Bits { get; private set; }
         public int Height { get; private set; }
         public int Width { get; private set; }
@@ -33,8 +45,12 @@ namespace GeneticSharp.Infrastructure.Framework.Images
             Bits = existing is null
                 ? throw new ArgumentNullException(nameof(existing))
                 : (int[])existing.Clone();
+        }
+
+        private Bitmap CreateBitmap()
+        {
             BitsHandle = GCHandle.Alloc(Bits, GCHandleType.Pinned);
-            Bitmap = new Bitmap(Width, Height, Width * 4, PixelFormat.Format32bppPArgb,
+            return new Bitmap(Width, Height, Width * 4, PixelFormat.Format32bppPArgb,
                 BitsHandle.AddrOfPinnedObject());
         }
 
@@ -70,8 +86,12 @@ namespace GeneticSharp.Infrastructure.Framework.Images
 
         public void Dispose()
         {
-            Bitmap?.Dispose();
-            BitsHandle.Free();
+            _bitmap?.Dispose();
+            _bitmap = null;
+            if (BitsHandle.IsAllocated)
+            {
+                BitsHandle.Free();
+            }
         }
     }
 }
