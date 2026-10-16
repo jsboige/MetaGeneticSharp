@@ -118,39 +118,41 @@ public class DirectBitmapGrayscaleTests
         Assert.Throws<ArgumentNullException>(() => ((DirectBitmap)null!).MakeGrayscaleImage());
     }
 
-    /// <summary>
-    /// A deterministic opaque palette: every (r, g, b) on a 17-step lattice (0, 16, ..., 240, 255),
-    /// 4913 colors, plus the 256 pure grays.
-    /// </summary>
-    private static DirectBitmap OpaquePalette()
-    {
-        int[] steps = new int[17];
-        for (int i = 0; i < 16; i++) steps[i] = i * 16;
-        steps[16] = 255;
-
-        var bits = new System.Collections.Generic.List<int>();
-        foreach (int r in steps)
-            foreach (int g in steps)
-                foreach (int b in steps)
-                    bits.Add(Color.FromArgb(255, r, g, b).ToArgb());
-        for (int v = 0; v < 256; v++) bits.Add(Color.FromArgb(255, v, v, v).ToArgb());
-
-        return new DirectBitmap(bits.Count, 1, bits.ToArray());
-    }
-
     [Test]
     [Platform("Win", Reason = GdiReason)]
-    public void Gdi_OpaquePixels_ManagedGrayscaleMatchesGdiColorMatrix()
+    public void Gdi_EveryOpaqueColor_ManagedGrayscaleMatchesGdiColorMatrix()
     {
-        // KEYSTONE: the managed conversion is the GDI+ conversion of the original, pixel for pixel.
-        using DirectBitmap source = OpaquePalette();
+        // KEYSTONE: the managed conversion is the GDI+ conversion of the original, pixel for pixel,
+        // on all 2^24 opaque colors (a 4096 x 4096 image whose pixel i is the color 0xFF000000 | i).
+        const int side = 4096;
+        var bits = new int[side * side];
+        for (int i = 0; i < bits.Length; i++)
+        {
+            bits[i] = unchecked((int)0xFF000000) | i;
+        }
+
+        using var source = new DirectBitmap(side, side, bits);
         using DirectBitmap gdi = source.Bitmap.MakeGrayscaleImage();
         using DirectBitmap managed = source.MakeGrayscaleImage();
 
-        for (int i = 0; i < source.Bits.Length; i++)
+        int mismatches = 0;
+        var report = new System.Text.StringBuilder();
+        for (int i = 0; i < bits.Length; i++)
         {
-            Assert.That(managed.Bits[i], Is.EqualTo(gdi.Bits[i]),
-                $"pixel {i}: source {source.Bits[i]:X8}, GDI+ {gdi.Bits[i]:X8}, managed {managed.Bits[i]:X8}");
+            if (managed.Bits[i] == gdi.Bits[i])
+            {
+                continue;
+            }
+
+            if (mismatches < 40)
+            {
+                int r = (i >> 16) & 0xFF, g = (i >> 8) & 0xFF, b = i & 0xFF;
+                report.Append($"\n  rgb({r}, {g}, {b}) at ({i % side}, {i / side}): GDI+ {gdi.Bits[i]:X8}, managed {managed.Bits[i]:X8}, float luma {r * .3f + g * .59f + b * .11f:R}");
+            }
+
+            mismatches++;
         }
+
+        Assert.That(mismatches, Is.Zero, $"{mismatches} of {bits.Length} colors differ; first ones:{report}");
     }
 }
