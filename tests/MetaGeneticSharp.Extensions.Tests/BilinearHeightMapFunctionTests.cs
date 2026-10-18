@@ -13,8 +13,12 @@ namespace MetaGeneticSharp.Extensions.Tests;
 /// 1-D linear blend of the two endpoints. Integer/corner samples must agree between the two
 /// schemes (no regression of the shared contract), and the bilinear edge sampling must never
 /// read out of bounds.
+/// <para>These tests build their sources as GDI+ <see cref="Bitmap"/>s, hence Windows-only; the
+/// same contract over a <see cref="GeneticSharp.Infrastructure.Framework.Images.DirectBitmap"/>
+/// source runs on every platform in <see cref="DirectBitmapLandscapeTests"/>.</para>
 /// </summary>
 [TestFixture]
+[Platform("Win", Reason = "GDI+ (System.Drawing.Common) is Windows-only since .NET 7")]
 public class BilinearHeightMapFunctionTests
 {
     /// <summary>

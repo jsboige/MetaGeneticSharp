@@ -23,6 +23,7 @@ public class LandscapeRendererTests
     [TestCase(KnownHeightMap.NepalBhoutan)]
     [TestCase(KnownHeightMap.TibetanPlateau)]
     [TestCase(KnownHeightMap.World)]
+    [Platform("Win", Reason = "GDI+ (System.Drawing.Common) is Windows-only since .NET 7")]
     public void Load_EachOriginalMap_ReturnsNonEmptyImage(KnownHeightMap map)
     {
         using Image image = LandscapeMaps.Load(map);

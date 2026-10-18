@@ -58,6 +58,18 @@ public sealed class BilinearHeightMapFunction : NamedEntity, IKnownFunction, IDi
         set => _targetImage = value.MakeGrayscaleImage();
     }
 
+    /// <summary>
+    /// Cross-platform counterpart of <see cref="TargetImage"/>, exactly like
+    /// <see cref="ImageHeightMapFunction.TargetBitmap"/>: the setter copies a
+    /// <see cref="DirectBitmap"/> to grayscale in managed code (no GDI+); the caller keeps
+    /// ownership of the argument.
+    /// </summary>
+    public DirectBitmap TargetBitmap
+    {
+        get => _targetImage;
+        set => _targetImage = value.MakeGrayscaleImage();
+    }
+
     public Func<double[], double> Function => ComputeValue;
 
     /// <summary>

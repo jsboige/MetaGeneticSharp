@@ -9,6 +9,9 @@
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <!-- The SkiaSharp package ships the Windows and macOS natives; the Linux one comes from this
+         package (NoDependencies: no fontconfig, the landscapes draw no text). -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
   </ItemGroup>
 
