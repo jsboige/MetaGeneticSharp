@@ -48,6 +48,46 @@ public class EquilibriumOptimizerTests
         Assert.That(((NamedEntity)built).Name, Is.EqualTo("Equilibrium Optimizer"));
     }
 
+    /// <summary>
+    /// mealpy draws the equilibrium candidate c_eq uniformly over the 5-member pool
+    /// (4 best + centroid): c_pool[generator.integers(0, len(c_pool))]. The port's final
+    /// custom-match step must therefore draw uniformly too. With RandomIncludesCurrent left
+    /// to its struct default (false), the random pick excludes index 0 (the current best of
+    /// the pool) and remaps it onto the last index (the centroid): the port would NEVER draw
+    /// its own best chromosome as donor and would over-draw the centroid (25% instead of 20%).
+    /// </summary>
+    [Test]
+    public void Build_EquilibriumPoolDraw_IsUniformOverFiveCandidates()
+    {
+        var eo = NewEo();
+        var root = (MatchMetaHeuristic)eo.Build();
+
+        // The third custom-match step is the pool draw over [best1..best4, centroid].
+        var drawStep = root.Picker.CustomMatch[2];
+        Assert.That(drawStep.Count, Is.EqualTo(1));
+        Assert.That(drawStep[0].MatchingKind, Is.EqualTo(MatchingKind.Random));
+        Assert.That(drawStep[0].RandomIncludesCurrent, Is.True,
+            "the pool draw must include the first candidate (the best): mealpy samples uniformly over the 5 members");
+
+        // Empirical distribution of the draw over a 5-member pool (seeded RNG): each member ~1/5.
+        FastRandomRandomization.ResetSeed(12345);
+        var pool = Enumerable.Range(0, 5)
+            .Select(i => (IChromosome)new DoubleArrayChromosome(new[] { (double)i, (double)i }))
+            .ToList();
+        var counts = new int[5];
+        for (int k = 0; k < 5000; k++)
+        {
+            var picked = root.Picker.SelectMatches(drawStep, null, null, 0, null, pool);
+            Assert.That(picked.Count, Is.EqualTo(1));
+            counts[(int)((DoubleArrayChromosome)picked[0]).GetDoubleValues()[0]]++;
+        }
+
+        Assert.That(counts[0], Is.EqualTo(1000).Within(150),
+            "the current best must be drawable as donor (mealpy: uniform 1/5)");
+        foreach (var c in counts)
+            Assert.That(c, Is.EqualTo(1000).Within(150), "uniform draw over the 5 equilibrium-pool candidates");
+    }
+
     [Test]
     public void Build_WrapsMainWithNoMutationAndForcedReinsertion()
     {
