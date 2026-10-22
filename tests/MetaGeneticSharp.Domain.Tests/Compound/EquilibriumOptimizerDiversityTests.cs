@@ -142,9 +142,54 @@ public class EquilibriumOptimizerDiversityTests
         public int DistinctDecoded;
         public double MaxStd;
         public double Best;
+
+        /// <summary>Chromosomes of the incoming generation that are not references held by the previous one.</summary>
+        public int Admitted;
+
+        /// <summary>Distinct positions among the admitted chromosomes alone.</summary>
+        public int AdmittedDistinct;
     }
 
-    private static List<Sample> RunArm(Substrate substrate, bool noMutation, int seed, out double elapsedMs)
+    /// <summary>
+    /// Records each generation boundary. <see cref="MetaPopulation.CreateNewGeneration"/> is virtual,
+    /// so the reinsertion decision can be read without touching the library: comparing the incoming
+    /// list by reference to the previous generation says how many slots actually changed.
+    /// </summary>
+    private sealed class ProbePopulation : MetaPopulation
+    {
+        private HashSet<IChromosome> _previous;
+
+        public readonly List<(int Admitted, int AdmittedDistinct)> Admissions = new();
+        public int Calls;
+
+        public ProbePopulation(int minSize, int maxSize, IChromosome adam)
+            : base(minSize, maxSize, adam)
+        {
+        }
+
+        public override void CreateNewGeneration(IList<IChromosome> chromosomes)
+        {
+            Calls++;
+            if (_previous != null)
+            {
+                var admitted = chromosomes.Where(c => !_previous.Contains(c)).ToList();
+                var keys = new HashSet<string>(admitted.Select(KeyOf));
+                Admissions.Add((admitted.Count, keys.Count));
+            }
+
+            base.CreateNewGeneration(chromosomes);
+            _previous = new HashSet<IChromosome>(chromosomes);
+        }
+
+        private static string KeyOf(IChromosome chromosome)
+        {
+            var values = new double[chromosome.Length];
+            for (int i = 0; i < chromosome.Length; i++) values[i] = (double)chromosome.GetGene(i).Value;
+            return string.Join(",", values.Select(v => Math.Round(v, 9).ToString("R")));
+        }
+    }
+
+    private static List<Sample> RunArm(Substrate substrate, bool noMutation, int seed, out double elapsedMs, out int populationCalls)
     {
         Configure(substrate);
         FastRandomRandomization.ResetSeed(seed);
@@ -156,7 +201,8 @@ public class EquilibriumOptimizerDiversityTests
             DoubleToGeneConverter = (_, d) => d,
         });
 
-        var population = new MetaPopulation(PopSize, PopSize, new ProbeChromosome());
+        var population = new ProbePopulation(PopSize, PopSize, new ProbeChromosome());
+        population.Admissions.Clear();
         Func<IChromosome, double> objective = substrate == Substrate.SudokuR1
             ? c => -CountConflicts(DecodeR1(((ProbeChromosome)c).Values()))
             : c => -Rastrigin(((ProbeChromosome)c).Values());
@@ -173,12 +219,13 @@ public class EquilibriumOptimizerDiversityTests
         };
 
         var samples = new List<Sample>();
-        ga.GenerationRan += (_, _) => samples.Add(Measure(ga, substrate));
+        ga.GenerationRan += (_, _) => samples.Add(Measure(ga, substrate, population));
 
         var watch = System.Diagnostics.Stopwatch.StartNew();
         ga.Start();
         watch.Stop();
         elapsedMs = watch.Elapsed.TotalMilliseconds;
+        populationCalls = population.Calls;
 
         Assert.Multiple(() =>
         {
@@ -196,7 +243,7 @@ public class EquilibriumOptimizerDiversityTests
         return samples;
     }
 
-    private static Sample Measure(MetaGeneticAlgorithm ga, Substrate substrate)
+    private static Sample Measure(MetaGeneticAlgorithm ga, Substrate substrate, ProbePopulation population)
     {
         var members = ga.Population.CurrentGeneration.Chromosomes;
         var rawKeys = new HashSet<string>();
@@ -223,12 +270,19 @@ public class EquilibriumOptimizerDiversityTests
         }
 
         var best = (ProbeChromosome)ga.BestChromosome;
+        // The first generation has no predecessor to compare against, so the record for the
+        // current generation is always the last one appended (Admissions.Count == N - 1).
+        var admission = population.Admissions.Count > 0
+            ? population.Admissions[^1]
+            : (0, 0);
         return new Sample
         {
             Generation = ga.GenerationsNumber,
             DistinctRaw = rawKeys.Count,
             DistinctDecoded = decodedKeys.Count,
             MaxStd = maxStd,
+            Admitted = admission.Item1,
+            AdmittedDistinct = admission.Item2,
             Best = substrate == Substrate.SudokuR1
                 ? CountConflicts(DecodeR1(best.Values()))
                 : Rastrigin(best.Values()),
@@ -250,16 +304,16 @@ public class EquilibriumOptimizerDiversityTests
             {
                 foreach (var seed in new[] { 0, 1, 7, 42 })
                 {
-                    var samples = RunArm(substrate, noMutation, seed, out var elapsedMs);
+                    var samples = RunArm(substrate, noMutation, seed, out var elapsedMs, out var populationCalls);
                     int improvements = samples.Zip(samples.Skip(1), (a, b) => b.Best < a.Best - 1e-12).Count(x => x);
                     var atCheckpoints = checkpoints
                         .Select(cp => samples[cp - 1])
                         .Select(s =>
                             $"g{s.Generation}: raw {s.DistinctRaw,2}/50 dec {s.DistinctDecoded,2}/50 " +
-                            $"std {s.MaxStd:F4} best {s.Best:F2}");
+                            $"adm {s.Admitted,2}({s.AdmittedDistinct,2}) std {s.MaxStd:F4} best {s.Best:F2}");
                     TestContext.Progress.WriteLine(
                         $"{substrate,-9} NoMutation={noMutation,-5} seed={seed,2} {elapsedMs,6:F0}ms " +
-                        $"| improvements {improvements,3}/{Generations} | " +
+                        $"| improvements {improvements,3}/{Generations} | calls {populationCalls} adm {samples.Count(s => s.Admitted > 0),3}/{samples.Count} | " +
                         string.Join(" | ", atCheckpoints));
                 }
             }
