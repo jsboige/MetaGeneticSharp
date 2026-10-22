@@ -199,6 +199,61 @@ public class ScatterSearchTests
     [Test]
     public void Build_DrivesMetaGeneticAlgorithm_EndToEnd_AndOptimises()
     {
+        const int seed = 12345;
+
+        // Pin the generator the algorithm actually draws from. RandomizationProvider.Current is a
+        // FastRandomRandomization, so BasicRandomization.ResetSeed does not control it (the neighbour
+        // BBPSO fixture's comment records exactly that trap); ResetSeed also replaces the ThreadLocal
+        // generator, so the run starts from a known stream whatever ran before it in the suite.
+        // #54/#55: the unseeded run failed 2/12 full-suite CI runs at the same SHA (final sum-of-
+        // squares 1.2044 and 1.8612 against the < 1.0 bound) while passing alone — order-dependent
+        // RNG consumption, not a capability defect.
+        FastRandomRandomization.ResetSeed(seed);
+        try
+        {
+            var run = RunKeystone();
+            FastRandomRandomization.ResetSeed(seed);
+            var replay = RunKeystone();
+
+            TestContext.WriteLine(
+                $"seed={seed} firstGen={run.FirstGenerationSumSq:G6} final={run.FinalSumSq:G6} " +
+                $"replay={replay.FinalSumSq:G6} ratio={run.FirstGenerationSumSq / run.FinalSumSq:G1}");
+
+            Assert.Multiple(() =>
+            {
+                // Determinism control: the same seed must reproduce the same search. If the provider
+                // is not actually pinned (or the algorithm gains another entropy source), the two
+                // runs diverge and this fails — instead of hiding as a 1-in-10 flake.
+                Assert.That(replay.FinalSumSq, Is.EqualTo(run.FinalSumSq).Within(1e-9),
+                    $"same seed must replay the same search; got {run.FinalSumSq} then {replay.FinalSumSq}");
+
+                // Improvement control: a broken ScatterSearch (no real recombination/reinsertion)
+                // cannot pass on a lucky draw — its first generation already sits two orders of
+                // magnitude above the origin region, and it must come down by at least that much.
+                Assert.That(run.FinalSumSq, Is.LessThan(run.FirstGenerationSumSq / 100.0),
+                    $"ScatterSearch must really improve; first generation sum-of-squares " +
+                    $"{run.FirstGenerationSumSq}, final {run.FinalSumSq}");
+
+                Assert.That(run.Generations, Is.EqualTo(60));
+                Assert.That(run.State, Is.EqualTo(GeneticAlgorithmState.TerminationReached));
+                Assert.That(run.FinalSumSq, Is.LessThan(1.0),
+                    $"ScatterSearch should reach the origin region; got sum-of-squares {run.FinalSumSq}");
+            });
+        }
+        finally
+        {
+            // Leave the global provider as found (unseeded) for every fixture that runs after this one.
+            FastRandomRandomization.ResetSeed(null);
+        }
+    }
+
+    private sealed record KeystoneRun(
+        double FirstGenerationSumSq, double FinalSumSq, int Generations, GeneticAlgorithmState State);
+
+    /// <summary>One keystone run: build the ScatterSearch, drive a real GA on Sphere(5), capture the
+    /// first-generation best (the improvement baseline) and the final best.</summary>
+    private static KeystoneRun RunKeystone()
+    {
         var ss = NewSs(maxGenerations: 60);
         var metaHeuristic = ss.Build();
 
@@ -223,20 +278,17 @@ public class ScatterSearchTests
             Termination = new GenerationNumberTermination(60)
         };
 
+        double? firstGenerationSumSq = null;
+        ga.GenerationRan += (_, _) => firstGenerationSumSq ??= -ga.BestChromosome!.Fitness!.Value;
+
         ga.Start();
 
         Assert.That(ga.BestChromosome, Is.Not.Null, "ScatterSearch produced no best chromosome");
         Assert.That(ga.BestChromosome.Fitness, Is.Not.Null,
             "ScatterSearch produced no evaluated offspring (the combination returned nothing)");
-        double finalSumSq = -ga.BestChromosome.Fitness!.Value;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ga.GenerationsNumber, Is.EqualTo(60));
-            Assert.That(ga.State, Is.EqualTo(GeneticAlgorithmState.TerminationReached));
-            Assert.That(finalSumSq, Is.LessThan(1.0),
-                $"ScatterSearch should reach the origin region; got sum-of-squares {finalSumSq}");
-        });
+        return new KeystoneRun(firstGenerationSumSq!.Value, -ga.BestChromosome.Fitness!.Value,
+            ga.GenerationsNumber, ga.State);
     }
 
     /// <summary>A bare double&lt;-&gt;double converter for direct operator tests (no embedding).</summary>
