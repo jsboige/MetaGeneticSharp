@@ -88,6 +88,20 @@ namespace MetaGeneticSharp
         public double CrossoverRate { get; set; } = DefaultCrossoverRate;
 
         /// <summary>
+        /// Consecutive generations without best-fitness improvement before a diversity reseed
+        /// replaces the worst part of the population with fresh random chromosomes
+        /// (<see cref="StagnationReseedReinsertion"/>). The corrective targets the measured
+        /// failure mode of DE on plateau substrates: the elitist frontier stops admitting, the
+        /// population collapses to a single position and the differential fuel dies with it —
+        /// steps sized by <see cref="ScaleFactor"/> cannot reopen what the population spread
+        /// closed. 0 (default) keeps the historical pure-elitist behaviour.
+        /// </summary>
+        public int StagnationReseedGenerations { get; set; }
+
+        /// <summary>Fraction of the worst population slots replaced at each reseed. Defaults to 0.3. Ignored when <see cref="StagnationReseedGenerations"/> is 0.</summary>
+        public double StagnationReseedFraction { get; set; } = 0.3;
+
+        /// <summary>
         /// Interpolates an adaptive scale factor and clamps progress at both schedule endpoints.
         /// </summary>
         public static double LinearScaleFactor(
@@ -105,6 +119,14 @@ namespace MetaGeneticSharp
 
         /// <summary>The trial-vector operator (mutation + binomial crossover). Overridable to express DE/best/1, DE/rand/2, jittered F, etc.</summary>
         public TrialOperator DifferentialOperator { get; set; } = DefaultTrialOperator;
+
+        /// <inheritdoc />
+        public override IReinsertion GetDefaultReinsertion()
+        {
+            return StagnationReseedGenerations > 0
+                ? new StagnationReseedReinsertion(StagnationReseedGenerations, StagnationReseedFraction)
+                : base.GetDefaultReinsertion();
+        }
 
         /// <inheritdoc />
         protected override IContainerMetaHeuristic BuildMainHeuristic()
