@@ -241,7 +241,21 @@ public class ParticleSwarmOptimizationStagnationTests
         new("inertia-0", 2.0, 0.0),
     };
 
-    private static List<Sample> RunArm(Substrate substrate, Arm arm, int seed,
+    /// <summary>
+    /// Which selector drives the <see cref="MetaGeneticAlgorithm"/> shell. The probe measures the
+    /// compound, but the compound never sees the raw population: it receives what the shell hands
+    /// it. Swapping the selector is the control that says whether a signature belongs to the
+    /// operator or to the shell around it.
+    /// </summary>
+    private enum ShellSelector { Elite, Tournament }
+
+    private static ISelection BuildSelection(ShellSelector shell) => shell switch
+    {
+        ShellSelector.Tournament => new TournamentSelection(),
+        _ => new EliteSelection(),
+    };
+
+    private static List<Sample> RunArm(Substrate substrate, Arm arm, int seed, ShellSelector shell,
         out double elapsedMs, out int zeroShare, out int stuckShare, out int clampShare, out int overshootShare)
     {
         var maxVelocityRatio = arm.MaxVelocityRatio;
@@ -298,7 +312,7 @@ public class ParticleSwarmOptimizationStagnationTests
         var ga = new MetaGeneticAlgorithm(
             population,
             new FuncFitness(objective),
-            new EliteSelection(),
+            BuildSelection(shell),
             new UniformCrossover(0.5f),
             new UniformMutation(true),
             pso.Build())
@@ -406,7 +420,7 @@ public class ParticleSwarmOptimizationStagnationTests
                 var finals = new List<double>();
                 foreach (var seed in new[] { 0, 1, 7, 42 })
                 {
-                    var samples = RunArm(substrate, arm, seed, out var elapsedMs,
+                    var samples = RunArm(substrate, arm, seed, ShellSelector.Elite, out var elapsedMs,
                         out var zeroShare, out var stuckShare, out var clampShare, out var overshootShare);
                     finals.Add(samples[^1].Best);
                     int improvements = samples.Zip(samples.Skip(1), (a, b) => b.Best < a.Best - 1e-12).Count(x => x);
@@ -444,6 +458,55 @@ public class ParticleSwarmOptimizationStagnationTests
                 double median = (finals[1] + finals[2]) / 2.0;
                 TestContext.Progress.WriteLine(
                     $"{substrate,-9} {arm.Name,-10} MEDIAN best over four seeds = {median:F4} " +
+                    $"[{finals[0]:F4} - {finals[^1]:F4}]");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Shell attribution control: the probe above reads a population the shell has already filtered,
+    /// so a collapse to 1/50 distinct positions can belong to either the operator or the shell. The
+    /// same probe of the Equilibrium Optimizer (#64) collapses too, through the same shell, which is
+    /// why this control was named in the PR rather than left as a caveat.
+    ///
+    /// Two shells, one arm, same seeds and budget: <see cref="EliteSelection"/> copies the best
+    /// individuals forward verbatim, <see cref="TournamentSelection"/> draws with replacement from a
+    /// soft competition. If the collapse follows the shell, it is a shell property and the operator
+    /// tables above are a statement about the compound, not about the swarm. If it stays under both
+    /// shells, it travels with the operator.
+    /// </summary>
+    [Test]
+    public void ShellAttribution_SelectionVariant_ShippedArm_SameSeeds()
+    {
+        var shipped = Array.Find(Arms, a => a.Name == "shipped")!;
+        var checkpoints = new[] { Generations / 4, Generations / 2, Generations };
+        foreach (var substrate in new[] { Substrate.Rastrigin, Substrate.SudokuR1 })
+        {
+            foreach (var shell in new[] { ShellSelector.Elite, ShellSelector.Tournament })
+            {
+                var finals = new List<double>();
+                foreach (var seed in new[] { 0, 1, 7, 42 })
+                {
+                    var samples = RunArm(substrate, shipped, seed, shell, out var elapsedMs,
+                        out var zeroShare, out var stuckShare, out var clampShare, out var overshootShare);
+                    finals.Add(samples[^1].Best);
+                    int improvements = samples.Zip(samples.Skip(1), (a, b) => b.Best < a.Best - 1e-12).Count(x => x);
+                    var atCheckpoints = checkpoints
+                        .Select(cp => samples[cp - 1])
+                        .Select(s =>
+                            $"g{s.Generation}: raw {s.DistinctRaw,2}/50 dec {s.DistinctDecoded,2}/50 " +
+                            $"std {s.MaxStd:F4} best {s.Best:F2}");
+                    TestContext.Progress.WriteLine(
+                        $"{substrate,-9} {shell,-10} seed={seed,2} {elapsedMs,6:F0}ms | " +
+                        $"improvements {improvements,3}/{Generations} | adm {samples.Count(s => s.Admitted > 0),3}/{samples.Count} | " +
+                        $"steps zero {zeroShare,3}% stuck-away {stuckShare,3}% | " +
+                        string.Join(" | ", atCheckpoints));
+                }
+
+                finals.Sort();
+                double median = (finals[1] + finals[2]) / 2.0;
+                TestContext.Progress.WriteLine(
+                    $"{substrate,-9} {shell,-10} MEDIAN best over four seeds = {median:F4} " +
                     $"[{finals[0]:F4} - {finals[^1]:F4}]");
             }
         }
