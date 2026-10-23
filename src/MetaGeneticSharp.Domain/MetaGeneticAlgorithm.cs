@@ -263,6 +263,15 @@ namespace MetaGeneticSharp
             ctx.CurrentStage = EvolutionStage.Reinsertion;
             var newGenerationChromosomes = Reinsert(ctx, offspring, parents);
             Population.CreateNewGeneration(newGenerationChromosomes);
+
+            // A reinsertion may introduce fresh chromosomes (a diversity reseed replacing the
+            // worst slots with CreateNew() material). Evaluate them through the same path as
+            // offspring; EvaluateFitness skips chromosomes that already have a fitness, so for
+            // reinsertions that only filter parents and offspring this is a no-op.
+            if (newGenerationChromosomes.Any(c => !c.Fitness.HasValue))
+            {
+                EvaluateFitness(newGenerationChromosomes);
+            }
         }
 
         private bool EndCurrentGeneration()
