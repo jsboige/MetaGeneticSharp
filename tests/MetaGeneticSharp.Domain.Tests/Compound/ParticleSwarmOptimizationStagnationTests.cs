@@ -198,6 +198,10 @@ public class ParticleSwarmOptimizationStagnationTests
         public double Best;
         public int Admitted;
 
+        /// <summary>Distinct chromosome instances in the generation (reference equality): separates
+        /// "many chromosomes converged to one position" from "one instance monopolising the slots".</summary>
+        public int DistinctRefs;
+
         /// <summary>Gene updates attempted during this generation, and how many took no step at all.</summary>
         public int Updates;
         public int ZeroSteps;
@@ -256,7 +260,8 @@ public class ParticleSwarmOptimizationStagnationTests
     };
 
     private static List<Sample> RunArm(Substrate substrate, Arm arm, int seed, ShellSelector shell,
-        out double elapsedMs, out int zeroShare, out int stuckShare, out int clampShare, out int overshootShare)
+        out double elapsedMs, out int zeroShare, out int stuckShare, out int clampShare, out int overshootShare,
+        float mutationProbability = 0.1f, bool closeCrossoverGate = false)
     {
         var maxVelocityRatio = arm.MaxVelocityRatio;
         Configure(substrate);
@@ -309,15 +314,27 @@ public class ParticleSwarmOptimizationStagnationTests
             ? c => -CountConflicts(DecodeR1(((ProbeChromosome)c).Values()))
             : c => -Rastrigin(((ProbeChromosome)c).Values());
 
+        var built = pso.Build();
+        if (closeCrossoverGate)
+        {
+            // The compound's MatchMetaHeuristic overwrites the shell CrossoverProbability
+            // (OverwriteProbability, static 1) and its update heuristic substitutes the operator:
+            // ga.CrossoverProbability and the shell UniformCrossover never execute in this arm.
+            // Closing the compound's own public gate is the only lever that stops the update
+            // stage -- which in this composition IS the crossover stage.
+            ((MatchMetaHeuristic)built).ProbabilityConfig.Crossover.StaticProbability = 0f;
+        }
+
         var ga = new MetaGeneticAlgorithm(
             population,
             new FuncFitness(objective),
             BuildSelection(shell),
             new UniformCrossover(0.5f),
             new UniformMutation(true),
-            pso.Build())
+            built)
         {
-            Termination = new GenerationNumberTermination(Generations)
+            Termination = new GenerationNumberTermination(Generations),
+            MutationProbability = mutationProbability,
         };
 
         var samples = new List<Sample>();
@@ -365,6 +382,7 @@ public class ParticleSwarmOptimizationStagnationTests
         var members = ga.Population.CurrentGeneration.Chromosomes;
         var rawKeys = new HashSet<string>();
         var decodedKeys = new HashSet<string>();
+        var refSet = new HashSet<IChromosome>(members, ReferenceEqualityComparer.Instance);
         var columns = new List<double>[GeneCount];
         for (int g = 0; g < GeneCount; g++) columns[g] = new List<double>(members.Count);
 
@@ -392,6 +410,7 @@ public class ParticleSwarmOptimizationStagnationTests
             Generation = ga.GenerationsNumber,
             DistinctRaw = rawKeys.Count,
             DistinctDecoded = decodedKeys.Count,
+            DistinctRefs = refSet.Count,
             MaxStd = maxStd,
             Admitted = population.AdmittedLast,
             Updates = tally.Calls,
@@ -509,6 +528,80 @@ public class ParticleSwarmOptimizationStagnationTests
                     $"{substrate,-9} {shell,-10} MEDIAN best over four seeds = {median:F4} " +
                     $"[{finals[0]:F4} - {finals[^1]:F4}]");
             }
+        }
+    }
+
+    /// <summary>
+    /// Shell attribution control, variation side, as a shell x variation square. Reading the
+    /// composition first: the compound's MatchMetaHeuristic overwrites the shell CrossoverProbability
+    /// (OverwriteProbability, static 1) and substitutes the operator, so the shell's UniformCrossover
+    /// and ga.CrossoverProbability never execute in this arm -- there is no shell crossover to
+    /// disable, only the compound's own update gate. And GeometricMetaHeuristicBase defaults
+    /// NoMutation to true, so mutation is scoped out of the shell entirely. Three variants:
+    /// `shipped` (reference), `nomut` (ga.MutationProbability = 0 -- expected inert, NoMutation
+    /// already scopes it out), `noupdate` (compound's update gate closed + mutation 0 -- no
+    /// variation at all, pure selection + reinsertion), each under EliteSelection and, for the
+    /// outer cells, TournamentSelection.
+    ///
+    /// The refs column counts distinct chromosome INSTANCES (reference equality) and separates two
+    /// shell homogenisation mechanisms that the raw-positions column of the earlier tables
+    /// conflated. GeneticSharp's EliteSelection is stateful: it carries its top-1 across calls and
+    /// re-adds the whole current generation every call, so under a take-MinSize reinsertion the
+    /// carried elite takes one extra slot per generation and distinct references decay linearly
+    /// (50 to 12 by g40 to 1) with no variation at all. TournamentSelection is stateless but
+    /// clones every winner (with its fitness), so positions concentrate on the fittest member
+    /// while references stay distinct -- raw collapses, refs do not. Both selectors therefore
+    /// homogenise the population without any help from the operator, each by its own mechanism.
+    /// </summary>
+    [Test]
+    public void ShellAttribution_VariationControls_SameSeeds()
+    {
+        var shipped = Array.Find(Arms, a => a.Name == "shipped")!;
+        var checkpoints = new[] { Generations / 4, Generations / 2, Generations };
+        var variants = new (string Name, float MutationProbability, bool CloseCrossoverGate)[]
+        {
+            ("shipped", 0.1f, false),
+            ("nomut", 0f, false),
+            ("noupdate", 0f, true),
+        };
+        foreach (var substrate in new[] { Substrate.Rastrigin, Substrate.SudokuR1 })
+        foreach (var shell in new[] { ShellSelector.Elite, ShellSelector.Tournament })
+        foreach (var variant in variants)
+        {
+            if (shell == ShellSelector.Tournament && variant.Name == "nomut")
+            {
+                continue; // mutation is proven inert under Elite (NoMutation default); skip the redundant cell.
+            }
+
+            var finals = new List<double>();
+            foreach (var seed in new[] { 0, 1, 7, 42 })
+            {
+                var samples = RunArm(substrate, shipped, seed, shell,
+                    out var elapsedMs, out var zeroShare, out var stuckShare, out _, out _,
+                    variant.MutationProbability, variant.CloseCrossoverGate);
+                finals.Add(samples[^1].Best);
+                int improvements = samples.Zip(samples.Skip(1), (a, b) => b.Best < a.Best - 1e-12).Count(x => x);
+                long totalUpdates = samples.Sum(s => s.Updates);
+                string stepProfile = totalUpdates == 0
+                    ? "steps (update stage closed)"
+                    : $"steps zero {zeroShare,3}% stuck-away {stuckShare,3}%";
+                var atCheckpoints = checkpoints
+                    .Select(cp => samples[cp - 1])
+                    .Select(s =>
+                        $"g{s.Generation}: raw {s.DistinctRaw,2}/50 refs {s.DistinctRefs,2}/50 dec {s.DistinctDecoded,2}/50 " +
+                        $"std {s.MaxStd:F4} best {s.Best:F2}");
+                TestContext.Progress.WriteLine(
+                    $"{substrate,-9} {variant.Name,-10} {shell,-10} seed={seed,2} {elapsedMs,6:F0}ms | " +
+                    $"improvements {improvements,3}/{Generations} | adm {samples.Count(s => s.Admitted > 0),3}/{samples.Count} | " +
+                    $"{stepProfile} | " +
+                    string.Join(" | ", atCheckpoints));
+            }
+
+            finals.Sort();
+            double median = (finals[1] + finals[2]) / 2.0;
+            TestContext.Progress.WriteLine(
+                $"{substrate,-9} {variant.Name,-10} {shell,-10} MEDIAN best over four seeds = {median:F4} " +
+                $"[{finals[0]:F4} - {finals[^1]:F4}]");
         }
     }
 }
