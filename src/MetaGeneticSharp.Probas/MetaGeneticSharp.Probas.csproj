@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Infer.NET, published on NuGet as Microsoft.ML.Infer.NET until the 0.4 line renamed it to
+         Microsoft.ML.Probabilistic (same engine, same namespaces Microsoft.ML.Probabilistic.*). -->
+    <PackageReference Include="Microsoft.ML.Probabilistic" Version="0.4.2504.701" />
+    <!-- Microsoft.ML.Probabilistic carries the runtime (Distributions, Math); the modeling API
+         (Microsoft.ML.Probabilistic.Models: Variable, Range, InferenceEngine) ships in Compiler. -->
+    <PackageReference Include="Microsoft.ML.Probabilistic.Compiler" Version="0.4.2504.701" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MetaGeneticSharp.Domain\MetaGeneticSharp.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
