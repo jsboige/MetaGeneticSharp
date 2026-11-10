@@ -320,6 +320,65 @@ public class ParticleSwarmOptimizationTests
     [Test]
     public void Build_DrivesMetaGeneticAlgorithm_EndToEnd_AndOptimises()
     {
+        const int seed = 12345;
+
+        // Pin the generator the algorithm actually draws from. RandomizationProvider.Current is a
+        // FastRandomRandomization, so BasicRandomization.ResetSeed does not control it (the neighbour
+        // BBPSO fixture's comment records exactly that trap); ResetSeed also replaces the ThreadLocal
+        // generator, so the run starts from a known stream whatever ran before it in the suite.
+        // Fork #52: the unseeded run flakes on the < 1.0 bound exactly like the ScatterSearch
+        // keystone did before ece01bc — the draw is order-dependent RNG consumption, not a
+        // capability defect.
+        FastRandomRandomization.ResetSeed(seed);
+        try
+        {
+            var run = RunKeystone();
+            FastRandomRandomization.ResetSeed(seed);
+            var replay = RunKeystone();
+
+            TestContext.WriteLine(
+                $"seed={seed} firstGen={run.FirstGenerationSumSq:G6} final={run.FinalSumSq:G6} " +
+                $"replay={replay.FinalSumSq:G6} ratio={run.FirstGenerationSumSq / run.FinalSumSq:G1}");
+
+            Assert.Multiple(() =>
+            {
+                // Determinism control: the same seed must reproduce the same search. If the provider
+                // is not actually pinned (or the algorithm gains another entropy source), the two
+                // runs diverge and this fails — instead of hiding as a one-in-ten flake.
+                Assert.That(replay.FinalSumSq, Is.EqualTo(run.FinalSumSq).Within(1e-9),
+                    $"same seed must replay the same search; got {run.FinalSumSq} then {replay.FinalSumSq}");
+
+                // Improvement control: a broken PSO (velocity recurrence not actually moving the
+                // swarm toward the personal/global bests) cannot pass on a lucky draw — its first
+                // generation already sits two orders of magnitude above the origin region, and it
+                // must come down by at least that much.
+                Assert.That(run.FinalSumSq, Is.LessThan(run.FirstGenerationSumSq / 100.0),
+                    $"PSO must really improve; first generation sum-of-squares " +
+                    $"{run.FirstGenerationSumSq}, final {run.FinalSumSq}");
+
+                Assert.That(run.Generations, Is.EqualTo(60));
+                Assert.That(run.State, Is.EqualTo(GeneticAlgorithmState.TerminationReached));
+                // Sphere(5) sum-of-squares under 1.0 proves the velocity recurrence actually
+                // optimises (not just random-walks); with the seed pinned the run is reproducible,
+                // so the bound no longer leans on run-to-run RNG variance.
+                Assert.That(run.FinalSumSq, Is.LessThan(1.0),
+                    $"PSO should reach the origin region; got sum-of-squares {run.FinalSumSq}");
+            });
+        }
+        finally
+        {
+            // Leave the global provider as found (unseeded) for every fixture that runs after this one.
+            FastRandomRandomization.ResetSeed(null);
+        }
+    }
+
+    private sealed record KeystoneRun(
+        double FirstGenerationSumSq, double FinalSumSq, int Generations, GeneticAlgorithmState State);
+
+    /// <summary>One keystone run: build the PSO, drive a real GA on Sphere(5), capture the
+    /// first-generation best (the improvement baseline) and the final best.</summary>
+    private static KeystoneRun RunKeystone()
+    {
         var pso = NewPso(maxGenerations: 60);
         var metaHeuristic = pso.Build();
 
@@ -344,24 +403,17 @@ public class ParticleSwarmOptimizationTests
             Termination = new GenerationNumberTermination(60)
         };
 
+        double? firstGenerationSumSq = null;
+        ga.GenerationRan += (_, _) => firstGenerationSumSq ??= -ga.BestChromosome!.Fitness!.Value;
+
         ga.Start();
 
         Assert.That(ga.BestChromosome, Is.Not.Null, "PSO produced no best chromosome");
         Assert.That(ga.BestChromosome.Fitness, Is.Not.Null,
             "PSO produced no evaluated offspring (the update returned nothing)");
-        double finalSumSq = -ga.BestChromosome.Fitness!.Value;
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(ga.GenerationsNumber, Is.EqualTo(60));
-            Assert.That(ga.State, Is.EqualTo(GeneticAlgorithmState.TerminationReached));
-            // Sphere(5) sum-of-squares under 1.0 proves the velocity recurrence actually optimises
-            // (not just random-walks) while staying honest about run-to-run RNG variance: the draw
-            // comes from RandomizationProvider.Current (FastRandom, unseeded), so the threshold
-            // keeps several sigmas of margin over the typical ~1e-2 converged value.
-            Assert.That(finalSumSq, Is.LessThan(1.0),
-                $"PSO should reach the origin region; got sum-of-squares {finalSumSq}");
-        });
+        return new KeystoneRun(firstGenerationSumSq!.Value, -ga.BestChromosome.Fitness!.Value,
+            ga.GenerationsNumber, ga.State);
     }
 
     private static bool HasNoMutationLayer(IMetaHeuristic heuristic)
