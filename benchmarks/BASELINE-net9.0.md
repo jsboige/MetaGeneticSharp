@@ -71,3 +71,11 @@ dotnet run -c Release -- --filter '*'
   < 20 % sur ces chiffres seuls.
 - Une seule machine ; la comparaison .NET 10/11 (#18771) devra rejouer sur le
   MÊME poste, même toolchain, pour être comparable.
+- **Le régime `InvocationCount(1)` de ce document mesure un mélange de code non
+  optimisé (tier0) et de code optimisé (tier1)** : la promotion du JIT tombe à
+  l'intérieur de la fenêtre mesurée, et la part de chaque régime dépend de la
+  durée de la mesure. Les valeurs ci-dessus sont donc **des mélanges**, pas des
+  coûts établis. Contrôle, protocole, chiffres et ce qui reste ouvert :
+  [`INVOCATION-COUNT-TIERING-META.md`](INVOCATION-COUNT-TIERING-META.md). En
+  résumé : sur ce banc, le rapport entre le régime N = 1 et le régime convergent
+  est ×1,21 à ×2,40 selon la charge.
