@@ -89,6 +89,16 @@ namespace MetaGeneticSharp
         public double RestartStepSize { get; set; } = double.NaN;
 
         /// <summary>
+        /// Whether the covariance update folds in the rank-one term <c>c₁ p_c p_cᵀ</c> (default
+        /// <c>true</c>). Switching it off is an <b>ablation</b>, not a variant: only the rank-one
+        /// coefficient is zeroed, so the rank-μ recombination, the step size and its cumulative path,
+        /// the restart policy, the population and the initialisation keep their exact values. Two runs
+        /// that differ by this switch therefore differ by that term alone, which is what makes a paired
+        /// comparison informative.
+        /// </summary>
+        public bool RankOneUpdate { get; set; } = true;
+
+        /// <summary>
         /// CMA-ES is a comma strategy: the new samples replace the population so the next update is
         /// estimated from the current distribution only.
         /// </summary>
@@ -107,6 +117,7 @@ namespace MetaGeneticSharp
                 StallGenerations = StallGenerations,
                 MaxRestarts = MaxRestarts,
                 RestartStepSize = RestartStepSize,
+                RankOneUpdate = RankOneUpdate,
                 GeometricConverter = GeometricConverter,
             };
 
@@ -149,6 +160,9 @@ namespace MetaGeneticSharp
         /// <inheritdoc cref="CovarianceMatrixAdaptationEvolutionStrategy.RestartStepSize" />
         public double RestartStepSize { get; set; } = double.NaN;
 
+        /// <inheritdoc cref="CovarianceMatrixAdaptationEvolutionStrategy.RankOneUpdate" />
+        public bool RankOneUpdate { get; set; } = true;
+
         /// <summary>The gene/double converter; a plain numeric conversion is used when null.</summary>
         public IGeometricConverter GeometricConverter { get; set; }
 
@@ -180,7 +194,7 @@ namespace MetaGeneticSharp
                     return fitted;
                 }
 
-                var next = previous.UpdateWithFitness(ranked, rankedFitness);
+                var next = previous.UpdateWithFitness(ranked, rankedFitness, RankOneUpdate);
 
                 // Restart-on-stall. The population is not increased: see the ceiling documented on the
                 // compound (IPOP's growth needs a population this operator does not own).
@@ -479,7 +493,14 @@ namespace MetaGeneticSharp
         /// The same update, carrying the fitnesses so the strategy can track its best-ever point and
         /// count the generations without improvement that drive a restart (higher is better).
         /// </summary>
-        public CmaEsDistribution UpdateWithFitness(IList<double[]> rankedPoints, IList<double> rankedFitness)
+        /// <param name="rankOneUpdate">
+        /// Whether to fold the rank-one term <c>c₁ (p_c p_cᵀ + (1 - h_σ) c_c (2 - c_c) C)</c> into the
+        /// covariance (default <c>true</c>). See
+        /// <see cref="CovarianceMatrixAdaptationEvolutionStrategy.RankOneUpdate"/>: switching it off
+        /// zeroes <c>c₁</c> and leaves every other quantity — mean, step size, both paths, <c>c_μ</c> —
+        /// untouched, so the returned distribution differs from the full update by that term alone.
+        /// </param>
+        public CmaEsDistribution UpdateWithFitness(IList<double[]> rankedPoints, IList<double> rankedFitness, bool rankOneUpdate = true)
         {
             ArgumentNullException.ThrowIfNull(rankedPoints);
             int lambda = rankedPoints.Count;
@@ -539,8 +560,13 @@ namespace MetaGeneticSharp
             }
 
             // C' = (1 - c_1 - c_μ) C + c_1 (p_c p_cᵀ + (1 - h_σ) c_c (2 - c_c) C) + c_μ Σ w_i y_i y_iᵀ
+            // The ablation zeroes c_1 and nothing else. The (1 - h_σ) correction rides on that same
+            // coefficient — it pays back the rank-one update's missing mass, so it goes with it — while
+            // c_μ, the mean, the step size and both paths keep their values: a run with the switch off
+            // differs from the full strategy by the rank-one term alone.
+            double rankOneRate = rankOneUpdate ? constants.COne : 0.0;
             double rankOneWeight = heavyTail ? 0.0 : constants.CCovariance * (2.0 - constants.CCovariance);
-            double decayWeight = 1.0 - constants.COne - constants.CMu + constants.COne * rankOneWeight;
+            double decayWeight = 1.0 - rankOneRate - constants.CMu + rankOneRate * rankOneWeight;
             var newCovariance = new double[d, d];
             for (int i = 0; i < d; i++)
             {
@@ -549,7 +575,7 @@ namespace MetaGeneticSharp
                     double rankMu = 0.0;
                     for (int k = 0; k < mu; k++) rankMu += weights[k] * y[k][i] * y[k][j];
                     newCovariance[i, j] = decayWeight * Covariance[i, j]
-                        + constants.COne * newPathCovariance[i] * newPathCovariance[j]
+                        + rankOneRate * newPathCovariance[i] * newPathCovariance[j]
                         + constants.CMu * rankMu;
                 }
             }
