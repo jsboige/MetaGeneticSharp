@@ -54,6 +54,7 @@ public class CovarianceMatrixAdaptationEvolutionStrategyTests
         cma.StallGenerations = 7;
         cma.MaxRestarts = 3;
         cma.RestartStepSize = 1.5;
+        cma.RankOneUpdate = false;
 
         var root = (CovarianceMatrixAdaptationEvolutionStrategyMetaHeuristic)cma.Build();
 
@@ -64,6 +65,7 @@ public class CovarianceMatrixAdaptationEvolutionStrategyTests
             Assert.That(root.StallGenerations, Is.EqualTo(7));
             Assert.That(root.MaxRestarts, Is.EqualTo(3));
             Assert.That(root.RestartStepSize, Is.EqualTo(1.5));
+            Assert.That(root.RankOneUpdate, Is.False);
             Assert.That(root.GeometricConverter, Is.SameAs(cma.GeometricConverter));
         });
     }
@@ -246,6 +248,69 @@ public class CovarianceMatrixAdaptationEvolutionStrategyTests
             { 0.19115937771472102, 1.2660533301119494, -0.23992825252652905 },
             { 0.10109583062671901, -0.23992825252652905, 0.6739549460534303 },
         }, 1e-12);
+    }
+
+    /// <summary>
+    /// The ablation contract, on the same state and the same ranking as the golden test: switching the
+    /// rank-one term off must leave <i>every</i> other quantity identical — mean, step size and both
+    /// evolution paths — and collapse the covariance to the closed-form rank-μ expression
+    /// <c>C' = (1 - c_μ) C + c_μ Σ_{i≤μ} w_i y_i y_iᵀ</c>. A run that differed elsewhere would not
+    /// isolate the term, and the paired comparison built on it would mean nothing.
+    /// </summary>
+    [Test]
+    public void Update_WithRankOneDisabled_KeepsEverythingButTheRankOneTerm()
+    {
+        var start = CmaEsDistribution.Create(
+            new[] { 0.5, -0.3, 0.2 },
+            0.7,
+            new double[,] { { 1.0, 0.2, 0.1 }, { 0.2, 1.5, -0.3 }, { 0.1, -0.3, 0.8 } });
+        var ranked = new List<double[]>
+        {
+            new[] { 0.9, -0.1, 0.35 }, new[] { 0.6, -0.55, 0.05 }, new[] { 1.2, 0.2, 0.5 }, new[] { 0.35, -0.8, -0.1 },
+            new[] { -0.4, 0.9, 1.1 }, new[] { 1.6, -1.2, 0.0 }, new[] { -1.0, 0.1, -0.9 }, new[] { 2.1, 1.4, 1.6 },
+        };
+
+        var full = start.Update(ranked);
+        var ablated = start.UpdateWithFitness(ranked, null, rankOneUpdate: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ablated.Mean, Is.EqualTo(full.Mean).Within(1e-12), "the mean does not depend on the covariance term");
+            Assert.That(ablated.Sigma, Is.EqualTo(full.Sigma).Within(1e-12), "CSA must be untouched by the ablation");
+            Assert.That(ablated.PathSigma, Is.EqualTo(full.PathSigma).Within(1e-12));
+            Assert.That(ablated.PathCovariance, Is.EqualTo(full.PathCovariance).Within(1e-12), "the path is still carried, only its update is not folded in");
+            Assert.That(ablated.Generation, Is.EqualTo(1));
+        });
+
+        // C' = (1 - c_μ) C + c_μ Σ w_i y_i y_iᵀ, recomputed here from the same start state.
+        int lambda = ranked.Count, mu = lambda / 2, d = 3;
+        var weights = CovarianceMatrixAdaptationEvolutionStrategyMath.RecombinationWeights(lambda);
+        var constants = CmaEsConstants.For(d, lambda);
+        var y = new double[lambda][];
+        for (int k = 0; k < lambda; k++)
+        {
+            y[k] = new double[d];
+            for (int i = 0; i < d; i++) y[k][i] = (ranked[k][i] - start.Mean[i]) / start.Sigma;
+        }
+        var expected = new double[d, d];
+        for (int i = 0; i < d; i++)
+        {
+            for (int j = 0; j < d; j++)
+            {
+                double rankMu = 0.0;
+                for (int k = 0; k < mu; k++) rankMu += weights[k] * y[k][i] * y[k][j];
+                expected[i, j] = (1.0 - constants.CMu) * start.Covariance[i, j] + constants.CMu * rankMu;
+            }
+        }
+        AssertMatrixEqual(ablated.Covariance, expected, 1e-12);
+
+        // And the term must actually move the covariance on this state, otherwise the comparison is vacuous.
+        double largestDifference = 0.0;
+        for (int i = 0; i < d; i++)
+        {
+            for (int j = 0; j < d; j++) largestDifference = Math.Max(largestDifference, Math.Abs(ablated.Covariance[i, j] - full.Covariance[i, j]));
+        }
+        Assert.That(largestDifference, Is.GreaterThan(1e-3), "the rank-one term must contribute materially on this state");
     }
 
     [Test]
